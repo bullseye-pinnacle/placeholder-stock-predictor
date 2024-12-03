@@ -357,8 +357,10 @@ def display_stock_features(stock_name, chart_type):
             except Exception as e:
                 st.error(f"Error generating predictions: {str(e)}")
                 st.error("Please ensure the LSTM model file exists and is valid.")
+                predictions = {}  # Reset predictions if they failed
             
-            # Always show the plot, with or without predictions
+            # Always show the historical data plot with any available predictions
+            st.subheader("Price History and Predictions")
             fig = plot_predictions(df, stock_name, predictions, chart_type)
             st.plotly_chart(fig, use_container_width=True)
             
