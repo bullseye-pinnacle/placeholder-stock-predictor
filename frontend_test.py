@@ -341,15 +341,37 @@ def display_lstm_predictions(df, stock_name, chart_type):
     
     return predictions
 
+def calculate_macd(df, fast_period=12, slow_period=26, signal_period=9):
+    """Calculate MACD (Moving Average Convergence Divergence)"""
+    # Calculate the exponential moving averages
+    exp1 = df['Close'].ewm(span=fast_period, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=slow_period, adjust=False).mean()
+    
+    # Calculate MACD line
+    macd_line = exp1 - exp2
+    
+    # Calculate signal line
+    signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
+    
+    # Calculate MACD histogram
+    macd_histogram = macd_line - signal_line
+    
+    return pd.DataFrame({
+        'MACD': macd_line,
+        'Signal': signal_line,
+        'Histogram': macd_histogram
+    })
+
 def display_technical_analysis(df, stock_name):
     """Display technical analysis dashboard"""
     st.subheader("📊 Technical Analysis Dashboard")
     
     # Add tabs for different types of analysis
-    tech_tab1, tech_tab2, tech_tab3 = st.tabs([
+    tech_tab1, tech_tab2, tech_tab3, tech_tab4 = st.tabs([
         "📈 Technical Indicators",
         "📅 Monthly Trends",
-        "🎯 Support & Resistance"
+        "🎯 Support & Resistance",
+        "📊 MACD Analysis"
     ])
     
     with tech_tab1:
@@ -641,6 +663,178 @@ def display_technical_analysis(df, stock_name):
                 )
             else:
                 st.write("No significant price levels detected in the current time frame.")
+
+    with tech_tab4:
+        st.markdown("### 📊 MACD Analysis")
+        st.markdown("""
+        The Moving Average Convergence Divergence (MACD) is a trend-following momentum indicator that shows the relationship 
+        between two moving averages of a security's price. It helps identify trend direction, momentum, and potential reversal points.
+        """)
+        
+        # Calculate MACD
+        macd_data = calculate_macd(df)
+        
+        # Current MACD values
+        current_macd = macd_data['MACD'].iloc[-1]
+        current_signal = macd_data['Signal'].iloc[-1]
+        current_hist = macd_data['Histogram'].iloc[-1]
+        
+        # Display current values
+        st.subheader("Current MACD Metrics")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                "MACD Line",
+                f"{current_macd:.3f}",
+                f"{current_macd - macd_data['MACD'].iloc[-2]:.3f}"
+            )
+        
+        with col2:
+            st.metric(
+                "Signal Line",
+                f"{current_signal:.3f}",
+                f"{current_signal - macd_data['Signal'].iloc[-2]:.3f}"
+            )
+        
+        with col3:
+            st.metric(
+                "Histogram",
+                f"{current_hist:.3f}",
+                f"{current_hist - macd_data['Histogram'].iloc[-2]:.3f}"
+            )
+        
+        # MACD Signal Analysis
+        signal_analysis = ""
+        if current_macd > current_signal:
+            if current_hist > macd_data['Histogram'].iloc[-2]:
+                signal_analysis = "🟢 **Bullish Signal**: MACD is above signal line and momentum is increasing"
+            else:
+                signal_analysis = "🟡 **Bullish but Weakening**: MACD is above signal line but momentum is decreasing"
+        else:
+            if current_hist < macd_data['Histogram'].iloc[-2]:
+                signal_analysis = "🔴 **Bearish Signal**: MACD is below signal line and momentum is decreasing"
+            else:
+                signal_analysis = "🟡 **Bearish but Improving**: MACD is below signal line but momentum is increasing"
+        
+        st.markdown(f"### Signal Analysis\n{signal_analysis}")
+        
+        # Create MACD visualization
+        fig = make_subplots(rows=2, cols=1, 
+                          row_heights=[0.7, 0.3],
+                          shared_xaxes=True,
+                          vertical_spacing=0.05)
+        
+        # Add price to top subplot
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df['Close'],
+                name='Price',
+                line=dict(color='blue')
+            ),
+            row=1, col=1
+        )
+        
+        # Add MACD lines to bottom subplot
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=macd_data['MACD'],
+                name='MACD',
+                line=dict(color='blue')
+            ),
+            row=2, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=macd_data['Signal'],
+                name='Signal',
+                line=dict(color='orange')
+            ),
+            row=2, col=1
+        )
+        
+        # Add MACD histogram
+        colors = ['red' if val < 0 else 'green' for val in macd_data['Histogram']]
+        fig.add_trace(
+            go.Bar(
+                x=df.index,
+                y=macd_data['Histogram'],
+                name='Histogram',
+                marker_color=colors
+            ),
+            row=2, col=1
+        )
+        
+        # Update layout
+        fig.update_layout(
+            title="Price and MACD Analysis",
+            height=800,
+            showlegend=True,
+            xaxis2_title="Date",
+            yaxis_title="Price (₹)",
+            yaxis2_title="MACD"
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Add educational content
+        with st.expander("Understanding MACD"):
+            st.markdown("""
+            #### How to Read MACD
+            
+            1. **MACD Line (Blue)**
+               - Calculated as the difference between 12-day and 26-day EMAs
+               - Shows the relationship between short-term and long-term price movements
+            
+            2. **Signal Line (Orange)**
+               - 9-day EMA of the MACD line
+               - Acts as a trigger for buy and sell signals
+            
+            3. **Histogram**
+               - Visual representation of the distance between MACD and signal line
+               - Green bars: MACD above signal line (bullish)
+               - Red bars: MACD below signal line (bearish)
+            
+            #### Common Trading Signals
+            
+            - **Bullish Crossover**: MACD crosses above signal line
+            - **Bearish Crossover**: MACD crosses below signal line
+            - **Divergence**: When MACD trend differs from price trend
+            - **Histogram Changes**: Shows momentum and potential trend changes
+            """)
+            
+            # Show recent crossovers
+            st.markdown("#### Recent Crossovers")
+            crossovers = []
+            for i in range(1, len(macd_data)):
+                prev_diff = macd_data['MACD'].iloc[i-1] - macd_data['Signal'].iloc[i-1]
+                curr_diff = macd_data['MACD'].iloc[i] - macd_data['Signal'].iloc[i]
+                
+                if (prev_diff < 0 and curr_diff > 0):
+                    crossovers.append({
+                        'Date': df.index[i].strftime('%Y-%m-%d'),
+                        'Type': 'Bullish',
+                        'Price': f"₹{df['Close'].iloc[i]:.2f}"
+                    })
+                elif (prev_diff > 0 and curr_diff < 0):
+                    crossovers.append({
+                        'Date': df.index[i].strftime('%Y-%m-%d'),
+                        'Type': 'Bearish',
+                        'Price': f"₹{df['Close'].iloc[i]:.2f}"
+                    })
+            
+            if crossovers:
+                st.dataframe(
+                    pd.DataFrame(crossovers[-5:]),  # Show last 5 crossovers
+                    hide_index=True
+                )
+            else:
+                st.write("No recent crossovers detected")
 
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
