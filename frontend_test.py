@@ -3,6 +3,7 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
+import pandas as pd
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 
@@ -22,6 +23,71 @@ def load_stock_data(symbol, years=10):
     ticker = f"{symbol}.NS"
     df = yf.download(ticker, start=start_date, end=end_date)
     return df
+
+def prepare_sequence_data(data, sequence_length=60):
+    """Prepare sequence data for LSTM prediction"""
+    # Calculate required technical indicators
+    data['Returns'] = data['Close'].pct_change()
+    data['MA20'] = data['Close'].rolling(window=20).mean()
+    data['MA50'] = data['Close'].rolling(window=50).mean()
+    data['Volatility'] = data['Returns'].rolling(window=20).std()
+    
+    # Calculate RSI
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    data['RSI'] = 100 - (100 / (1 + rs))
+    
+    # Fill NaN values
+    data = data.fillna(method='bfill')
+    
+    # Select and order features to match the model's expected input
+    selected_features = ['Close', 'RSI', 'Volatility', 'MA20', 'MA50', 'Returns']
+    feature_data = data[selected_features].values
+    
+    # Scale the data
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_data = scaler.fit_transform(feature_data)
+    
+    # Create sequences
+    sequences = []
+    for i in range(len(scaled_data) - sequence_length):
+        sequences.append(scaled_data[i:(i + sequence_length)])
+    
+    return np.array(sequences), scaler
+
+def generate_predictions(model, last_sequence, scaler, days_ahead):
+    """Generate predictions for specified number of days"""
+    predictions = []
+    current_sequence = last_sequence.copy()
+    
+    for _ in range(days_ahead):
+        # Reshape input for prediction (batch_size, timesteps, features)
+        model_input = current_sequence.reshape((1, current_sequence.shape[0], current_sequence.shape[1]))
+        
+        # Predict next value
+        next_pred = model.predict(model_input, verbose=0)
+        
+        # Create a complete feature set for the prediction
+        # We'll use the last known values for technical indicators
+        last_features = current_sequence[-1].copy()
+        last_features[0] = next_pred[0, 0]  # Update only the Close price
+        
+        # Update sequence for next prediction
+        current_sequence = np.roll(current_sequence, -1, axis=0)
+        current_sequence[-1] = last_features
+        
+        # Store the predicted close price
+        predictions.append(next_pred[0, 0])
+    
+    # Inverse transform predictions
+    # Create a dummy array with all features to match scaler's expected shape
+    dummy_features = np.zeros((len(predictions), scaler.scale_.shape[0]))
+    dummy_features[:, 0] = predictions  # Fill only the Close price column
+    predictions_transformed = scaler.inverse_transform(dummy_features)[:, 0]
+    
+    return predictions_transformed
 
 def plot_stock_history(df, stock_name):
     """Create interactive stock price plot"""
@@ -61,11 +127,54 @@ def plot_stock_history(df, stock_name):
     
     return fig
 
+def plot_predictions(df, stock_name, predictions_dict):
+    """Plot historical data with predictions"""
+    fig = go.Figure()
+    
+    # Plot historical data
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df['Close'],
+        name='Historical Price',
+        line=dict(color='blue')
+    ))
+    
+    # Plot predictions for different time horizons
+    colors = {'30d': 'red', '60d': 'orange', '120d': 'green'}
+    last_date = df.index[-1]
+    
+    for period, pred_values in predictions_dict.items():
+        future_dates = pd.date_range(
+            start=last_date,
+            periods=len(pred_values) + 1,
+            freq='D'
+        )[1:]
+        
+        fig.add_trace(go.Scatter(
+            x=future_dates,
+            y=pred_values,
+            name=f'{period} Prediction',
+            line=dict(color=colors[period], dash='dash')
+        ))
+    
+    fig.update_layout(
+        title=f'{stock_name} Price Predictions',
+        yaxis_title='Price (₹)',
+        xaxis_title='Date',
+        height=600,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        )
+    )
+    
+    return fig
+
 def display_stock_features(stock_name):
-    """
-    Display all features and analysis for the selected stock.
-    This function will be expanded with actual features later.
-    """
+    """Display all features and analysis for the selected stock."""
     st.header(f"Analysis Dashboard: {stock_name}")
     
     # Load and display historical data
@@ -123,100 +232,24 @@ def display_stock_features(stock_name):
         
         else:
             st.error(f"Failed to load data for {stock_name}")
-            # Display interactive plot
-            fig = plot_stock_history(df, stock_name)
-            st.plotly_chart(fig, use_container_width=True)
-    
-    # Placeholder for features (to be implemented)
-    st.write("Features to be implemented:")
-    features = [
-        "LSTM Price Predictions (30, 60, 120 days)",
-        "Technical Indicators",
-        "Risk Metrics",
-        "Trading Signals",
-        "Position Sizing",
-        "Trend Analysis"
-    ]
-    
-    for feature in features:
-        st.markdown(f"- {feature}")
-
-def prepare_sequence_data(data, sequence_length=60):
-    """Prepare sequence data for LSTM prediction"""
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_data = scaler.fit_transform(data['Close'].values.reshape(-1, 1))
-    
-    sequences = []
-    for i in range(len(scaled_data) - sequence_length):
-        sequences.append(scaled_data[i:(i + sequence_length)])
-    
-    return np.array(sequences), scaler
-
-def generate_predictions(model, last_sequence, scaler, days_ahead):
-    """Generate predictions for specified number of days"""
-    predictions = []
-    current_sequence = last_sequence.copy()
-    
-    for _ in range(days_ahead):
-        # Predict next value
-        next_pred = model.predict(current_sequence.reshape(1, -1, 1), verbose=0)
-        predictions.append(next_pred[0, 0])
+            
+    # Additional features section
+    st.subheader("Technical Indicators")
+    if df is not None and not df.empty:
+        tech_indicators = {
+            "RSI (14)": df['RSI'].iloc[-1] if 'RSI' in df else None,
+            "20-Day MA": df['MA20'].iloc[-1] if 'MA20' in df else None,
+            "50-Day MA": df['MA50'].iloc[-1] if 'MA50' in df else None,
+            "Volatility": df['Volatility'].iloc[-1] if 'Volatility' in df else None
+        }
         
-        # Update sequence for next prediction
-        current_sequence = np.roll(current_sequence, -1)
-        current_sequence[-1] = next_pred
-    
-    # Inverse transform predictions
-    predictions = np.array(predictions).reshape(-1, 1)
-    predictions = scaler.inverse_transform(predictions)
-    
-    return predictions.flatten()
-
-def plot_predictions(df, stock_name, predictions_dict):
-    """Plot historical data with predictions"""
-    fig = go.Figure()
-    
-    # Plot historical data
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['Close'],
-        name='Historical Price',
-        line=dict(color='blue')
-    ))
-    
-    # Plot predictions for different time horizons
-    colors = {'30d': 'red', '60d': 'orange', '120d': 'green'}
-    last_date = df.index[-1]
-    
-    for period, pred_values in predictions_dict.items():
-        future_dates = pd.date_range(
-            start=last_date,
-            periods=len(pred_values) + 1,
-            freq='D'
-        )[1:]
-        
-        fig.add_trace(go.Scatter(
-            x=future_dates,
-            y=pred_values,
-            name=f'{period} Prediction',
-            line=dict(color=colors[period], dash='dash')
-        ))
-    
-    fig.update_layout(
-        title=f'{stock_name} Price Predictions',
-        yaxis_title='Price (₹)',
-        xaxis_title='Date',
-        height=600,
-        showlegend=True,
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01
-        )
-    )
-    
-    return fig
+        # Display technical indicators in columns
+        cols = st.columns(len(tech_indicators))
+        for col, (name, value) in zip(cols, tech_indicators.items()):
+            if value is not None:
+                col.metric(name, f"{value:.2f}")
+            else:
+                col.metric(name, "N/A")
 
 def main():
     st.set_page_config(
@@ -234,6 +267,14 @@ def main():
             "Select a Stock",
             AVAILABLE_STOCKS,
             help="Choose a stock to analyze"
+        )
+        
+        # Add time range selector (for future use)
+        st.subheader("Chart Settings")
+        chart_type = st.radio(
+            "Chart Type",
+            ["Candlestick", "Line"],
+            disabled=True  # Will implement later
         )
     
     # Display features for selected stock
