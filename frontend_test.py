@@ -1,4 +1,7 @@
 import streamlit as st
+import yfinance as yf
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
 
 # List of available stocks (these are the ones we have models for)
 AVAILABLE_STOCKS = [
