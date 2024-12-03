@@ -192,6 +192,22 @@ def plot_predictions(df, stock_name, predictions_dict, chart_type="Candlestick")
             y=0.99,
             xanchor="left",
             x=0.01
+        ),
+        xaxis_rangeslider_visible=False,  # Disable range slider
+        dragmode='zoom',  # Enable zoom by default
+        selectdirection='h'  # Horizontal selection
+    )
+    # Add modebar buttons for both chart types
+    fig.update_layout(
+        modebar=dict(
+            add=[
+                'select2d',
+                'lasso2d',
+                'zoomIn2d',
+                'zoomOut2d',
+                'autoScale2d',
+                'resetScale2d'
+            ]
         )
     )
     
