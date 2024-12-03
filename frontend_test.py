@@ -921,6 +921,26 @@ def display_placeholder_feature(df, stock_name):
 def calculate_trading_probabilities(df, predictions, window=30):
     """Calculate buy/sell/hold probabilities based on LSTM predictions"""
     
+    # Check if predictions is valid
+    if predictions is None or not isinstance(predictions, (list, np.ndarray)) or len(predictions) == 0:
+        # Return default probabilities if no predictions available
+        return {
+            'probabilities': {
+                'buy': 33.33,
+                'sell': 33.33,
+                'hold': 33.34
+            },
+            'confidence': {
+                'overall': 0,
+                'trend_strength': 0,
+                'volatility_risk': 50
+            },
+            'metrics': {
+                'momentum': 0,
+                'volatility': df['Close'].pct_change().std() * np.sqrt(window) * 100
+            }
+        }
+    
     # Convert predictions to numpy array if it's not already
     predictions = np.array(predictions)
     current_price = df['Close'].iloc[-1]
@@ -979,8 +999,13 @@ def display_risk_assessment(df, stock_name, predictions):
     """Display risk assessment and trading probabilities"""
     st.header("🎯 Risk Assessment")
     
-    # Calculate trading probabilities
-    analysis = calculate_trading_probabilities(df, predictions)
+    # Calculate trading probabilities with error handling
+    try:
+        analysis = calculate_trading_probabilities(df, predictions)
+    except Exception as e:
+        st.error(f"Error calculating trading probabilities: {str(e)}")
+        return
+    
     probs = analysis['probabilities']
     conf = analysis['confidence']
     metrics = analysis['metrics']
