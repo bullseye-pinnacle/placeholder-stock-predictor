@@ -127,16 +127,35 @@ def plot_stock_history(df, stock_name):
     
     return fig
 
-def plot_predictions(df, stock_name, predictions_dict):
+def plot_predictions(df, stock_name, predictions_dict, chart_type="Candlestick"):
     """Plot historical data with predictions"""
     fig = go.Figure()
     
-    # Plot historical data
-    fig.add_trace(go.Scatter(
+    # Plot historical data based on chart type
+    if chart_type == "Candlestick":
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name='Historical Data'
+        ))
+    else:  # Line chart
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['Close'],
+            name='Historical Price',
+            line=dict(color='blue')
+        ))
+    
+    # Add volume bar chart
+    fig.add_trace(go.Bar(
         x=df.index,
-        y=df['Close'],
-        name='Historical Price',
-        line=dict(color='blue')
+        y=df['Volume'],
+        name='Volume',
+        yaxis='y2',
+        opacity=0.3
     ))
     
     # Plot predictions for different time horizons
@@ -160,6 +179,11 @@ def plot_predictions(df, stock_name, predictions_dict):
     fig.update_layout(
         title=f'{stock_name} Price Predictions',
         yaxis_title='Price (₹)',
+        yaxis2=dict(
+            title='Volume',
+            overlaying='y',
+            side='right'
+        ),
         xaxis_title='Date',
         height=600,
         showlegend=True,
@@ -173,7 +197,7 @@ def plot_predictions(df, stock_name, predictions_dict):
     
     return fig
 
-def display_stock_features(stock_name):
+def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
     st.header(f"Analysis Dashboard: {stock_name}")
     
@@ -198,13 +222,13 @@ def display_stock_features(stock_name):
                     f"{df['Volume'].iloc[-1]:,.0f}"
                 )
             
+            predictions = {}
             # Load LSTM model and generate predictions
             try:
                 model = load_model(f'lstm_model_{stock_name.lower()}.keras')
                 sequence_data, scaler = prepare_sequence_data(df)
                 last_sequence = sequence_data[-1]
                 
-                predictions = {}
                 for days in [30, 60, 120]:
                     pred = generate_predictions(model, last_sequence, scaler, days)
                     predictions[f'{days}d'] = pred
@@ -218,18 +242,14 @@ def display_stock_features(stock_name):
                         f"{change_pct:+.2f}%"
                     )
                 
-                # Plot historical data with predictions
-                fig = plot_predictions(df, stock_name, predictions)
-                st.plotly_chart(fig, use_container_width=True)
-                
             except Exception as e:
                 st.error(f"Error generating predictions: {str(e)}")
                 st.error("Please ensure the LSTM model file exists and is valid.")
-                
-                # Show historical data without predictions
-                fig = plot_stock_history(df, stock_name)
-                st.plotly_chart(fig, use_container_width=True)
-        
+            
+            # Always show the plot, with or without predictions
+            fig = plot_predictions(df, stock_name, predictions, chart_type)
+            st.plotly_chart(fig, use_container_width=True)
+            
         else:
             st.error(f"Failed to load data for {stock_name}")
             
@@ -269,17 +289,17 @@ def main():
             help="Choose a stock to analyze"
         )
         
-        # Add time range selector (for future use)
+        # Add time range selector
         st.subheader("Chart Settings")
         chart_type = st.radio(
             "Chart Type",
             ["Candlestick", "Line"],
-            disabled=True  # Will implement later
+            disabled=False  # Enabled now
         )
     
     # Display features for selected stock
     if selected_stock:
-        display_stock_features(selected_stock)
+        display_stock_features(selected_stock, chart_type)
 
 if __name__ == "__main__":
     main()
