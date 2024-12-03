@@ -242,11 +242,16 @@ def display_lstm_predictions(df, stock_name, chart_type):
                     f"{change_pct:+.2f}%"
                 )
         
-        return predictions
+        # Display prediction chart
+        fig = plot_predictions(df, stock_name, predictions, chart_type)
+        st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
         st.error(f"Error generating predictions: {str(e)}")
+        st.error("Please ensure the LSTM model file exists and is valid.")
         return None
+    
+    return predictions
 
 def calculate_macd(df, fast_period=12, slow_period=26, signal_period=9):
     """Calculate MACD (Moving Average Convergence Divergence)"""
@@ -677,14 +682,11 @@ def display_technical_analysis(df, stock_name):
             row=2, col=1
         )
         
-        # Update layout
+        # Update layout for gauge charts
         fig.update_layout(
-            title="Price and MACD Analysis",
+            grid={'rows': 1, 'columns': 3},
             height=800,
-            showlegend=True,
-            xaxis2_title="Date",
-            yaxis_title="Price (₹)",
-            yaxis2_title="MACD"
+            margin=dict(t=30, b=0)
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -768,22 +770,11 @@ def display_stock_features(stock_name, chart_type):
                 f"{df['Volume'].iloc[-1]:,.0f}"
             )
         
-        # Generate predictions first
-        try:
-            predictions = display_lstm_predictions(df, stock_name, chart_type)
-        except Exception as e:
-            st.error(f"Error generating predictions: {str(e)}")
-            predictions = None
-        
         # Create tabs for different analysis sections
         tab1, tab2, tab3 = st.tabs(["📈 LSTM Predictions", "📊 Technical Analysis", "🎯 Risk Assessment"])
         
         with tab1:
-            if predictions:
-                # Display prediction metrics and charts
-                st.plotly_chart(plot_predictions(df, stock_name, predictions, chart_type), use_container_width=True)
-            else:
-                st.warning("No predictions available")
+            predictions = display_lstm_predictions(df, stock_name, chart_type)
         
         with tab2:
             display_technical_analysis(df, stock_name)
@@ -796,47 +787,11 @@ def display_stock_features(stock_name, chart_type):
     else:
         st.error("Failed to load stock data. Please try again.")
 
-def display_lstm_predictions(df, stock_name, chart_type):
-    """Display LSTM-based predictions"""
-    current_price = df['Close'].iloc[-1]
-    predictions = {}
-    
-    try:
-        model = load_model(f'lstm_model_{stock_name.lower()}.keras')
-        sequence_data, scaler = prepare_sequence_data(df)
-        last_sequence = sequence_data[-1]
-        
-        # Generate predictions for different time horizons
-        col1, col2, col3 = st.columns(3)
-        for days, col in zip([30, 60, 120], [col1, col2, col3]):
-            pred = generate_predictions(model, last_sequence, scaler, days)
-            predictions[f'{days}d'] = pred
-            
-            # Display prediction metrics
-            final_price = pred[-1]
-            change_pct = ((final_price - current_price) / current_price) * 100
-            with col:
-                st.metric(
-                    f"{days}-Day Prediction",
-                    f"₹{final_price:.2f}",
-                    f"{change_pct:+.2f}%"
-                )
-        
-        return predictions
-        
-    except Exception as e:
-        st.error(f"Error generating predictions: {str(e)}")
-        return None
-
 def calculate_trading_probabilities(df, predictions, window=30):
     """Calculate buy/sell/hold probabilities based on LSTM predictions"""
     
-    st.write("Debug - Received predictions type:", type(predictions))
-    st.write("Debug - Received predictions length:", len(predictions) if predictions is not None else "None")
-    
     # Check if predictions is valid
     if predictions is None or not isinstance(predictions, (list, np.ndarray)) or len(predictions) == 0:
-        st.warning("Invalid predictions received in calculate_trading_probabilities")
         # Return default probabilities if no predictions available
         return {
             'probabilities': {
@@ -859,17 +814,11 @@ def calculate_trading_probabilities(df, predictions, window=30):
     predictions = np.array(predictions).flatten()  # Ensure 1D array
     current_price = df['Close'].iloc[-1]
     
-    st.write("Debug - Processed predictions shape:", predictions.shape)
-    st.write("Debug - Current price:", current_price)
-    
     # Calculate price changes as percentage
     price_changes = np.zeros_like(predictions)
     for i in range(len(predictions)):
         price_changes[i] = (predictions[i] - current_price) / current_price * 100
     
-    st.write("Debug - Price changes:", price_changes[:5])
-    
-    # Rest of the function remains the same...
     # Calculate momentum from recent predictions
     momentum = np.mean(price_changes)
     momentum_std = np.std(price_changes)
@@ -914,6 +863,43 @@ def calculate_trading_probabilities(df, predictions, window=30):
             'volatility': volatility
         }
     }
+
+def display_lstm_predictions(df, stock_name, chart_type):
+    """Display LSTM-based predictions"""
+    current_price = df['Close'].iloc[-1]
+    predictions = {}
+    
+    try:
+        model = load_model(f'lstm_model_{stock_name.lower()}.keras')
+        sequence_data, scaler = prepare_sequence_data(df)
+        last_sequence = sequence_data[-1]
+        
+        # Generate predictions for different time horizons
+        col1, col2, col3 = st.columns(3)
+        for days, col in zip([30, 60, 120], [col1, col2, col3]):
+            pred = generate_predictions(model, last_sequence, scaler, days)
+            predictions[f'{days}d'] = pred
+            
+            # Display prediction metrics
+            final_price = pred[-1]
+            change_pct = ((final_price - current_price) / current_price) * 100
+            with col:
+                st.metric(
+                    f"{days}-Day Prediction",
+                    f"₹{final_price:.2f}",
+                    f"{change_pct:+.2f}%"
+                )
+        
+        # Display prediction chart
+        fig = plot_predictions(df, stock_name, predictions, chart_type)
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"Error generating predictions: {str(e)}")
+        st.error("Please ensure the LSTM model file exists and is valid.")
+        return None
+    
+    return predictions
 
 def display_risk_assessment(df, stock_name, predictions):
     """Display risk assessment and trading probabilities"""
