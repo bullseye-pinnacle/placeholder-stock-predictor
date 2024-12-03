@@ -213,6 +213,26 @@ def plot_predictions(df, stock_name, predictions_dict, chart_type="Candlestick")
 
     return fig
 
+def calculate_monthly_trends(df):
+    """Calculate monthly trends from historical data"""
+    # Resample data to monthly frequency
+    monthly_data = df.resample('M').agg({
+        'Open': 'first',
+        'High': 'max',
+        'Low': 'min',
+        'Close': 'last',
+        'Volume': 'sum'
+    })
+    
+    # Calculate monthly statistics
+    monthly_stats = pd.DataFrame()
+    monthly_stats['Average'] = (monthly_data['High'] + monthly_data['Low'] + monthly_data['Close']) / 3
+    monthly_stats['Change'] = monthly_data['Close'].pct_change() * 100
+    monthly_stats['Range'] = (monthly_data['High'] - monthly_data['Low']) / monthly_data['Low'] * 100
+    monthly_stats['Volume_Change'] = monthly_data['Volume'].pct_change() * 100
+    
+    return monthly_data, monthly_stats
+
 def display_lstm_predictions(df, stock_name, chart_type):
     """Display LSTM-based predictions"""
     current_price = df['Close'].iloc[-1]
@@ -254,103 +274,188 @@ def display_technical_analysis(df, stock_name):
     """Display technical analysis dashboard"""
     st.subheader("📊 Technical Analysis Dashboard")
     
-    # Display technical indicators with explanations
-    st.markdown("""
-    ### Key Technical Indicators
-    Monitor these indicators to understand market momentum, trends, and volatility:
-    """)
+    # Add tabs for different types of analysis
+    tech_tab1, tech_tab2 = st.tabs(["📈 Technical Indicators", "📅 Monthly Trends"])
     
-    # Technical Indicators in columns
-    tech_indicators = {
-        "RSI (14)": {
-            "value": df['RSI'].iloc[-1] if 'RSI' in df else None,
-            "desc": "Relative Strength Index - Measures momentum. Values > 70 suggest overbought, < 30 oversold."
-        },
-        "20-Day MA": {
-            "value": df['MA20'].iloc[-1] if 'MA20' in df else None,
-            "desc": "20-Day Moving Average - Short-term trend indicator."
-        },
-        "50-Day MA": {
-            "value": df['MA50'].iloc[-1] if 'MA50' in df else None,
-            "desc": "50-Day Moving Average - Medium-term trend indicator."
-        },
-        "Volatility": {
-            "value": df['Volatility'].iloc[-1] if 'Volatility' in df else None,
-            "desc": "20-Day Rolling Volatility - Measures price fluctuation intensity."
+    with tech_tab1:
+        # Display technical indicators with explanations
+        st.markdown("""
+        ### Key Technical Indicators
+        Monitor these indicators to understand market momentum, trends, and volatility:
+        """)
+        
+        # Technical Indicators in columns
+        tech_indicators = {
+            "RSI (14)": {
+                "value": df['RSI'].iloc[-1] if 'RSI' in df else None,
+                "desc": "Relative Strength Index - Measures momentum. Values > 70 suggest overbought, < 30 oversold."
+            },
+            "20-Day MA": {
+                "value": df['MA20'].iloc[-1] if 'MA20' in df else None,
+                "desc": "20-Day Moving Average - Short-term trend indicator."
+            },
+            "50-Day MA": {
+                "value": df['MA50'].iloc[-1] if 'MA50' in df else None,
+                "desc": "50-Day Moving Average - Medium-term trend indicator."
+            },
+            "Volatility": {
+                "value": df['Volatility'].iloc[-1] if 'Volatility' in df else None,
+                "desc": "20-Day Rolling Volatility - Measures price fluctuation intensity."
+            }
         }
-    }
-    
-    # Display indicators with metrics and descriptions
-    for name, info in tech_indicators.items():
-        st.write(f"**{name}**")
-        if info["value"] is not None:
-            st.metric(name, f"{info['value']:.2f}")
-        else:
-            st.metric(name, "N/A")
-        st.caption(info["desc"])
-        st.write("---")
-    
-    # Plot technical indicators
-    fig = go.Figure()
-    
-    # Price and Moving Averages
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['Close'],
-        name='Close Price',
-        line=dict(color='blue')
-    ))
-    
-    if 'MA20' in df:
+        
+        # Display indicators with metrics and descriptions
+        for name, info in tech_indicators.items():
+            st.write(f"**{name}**")
+            if info["value"] is not None:
+                st.metric(name, f"{info['value']:.2f}")
+            else:
+                st.metric(name, "N/A")
+            st.caption(info["desc"])
+            st.write("---")
+        
+        # Plot technical indicators
+        fig = go.Figure()
+        
+        # Price and Moving Averages
         fig.add_trace(go.Scatter(
             x=df.index,
-            y=df['MA20'],
-            name='20-Day MA',
-            line=dict(color='orange', dash='dash')
-        ))
-    
-    if 'MA50' in df:
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['MA50'],
-            name='50-Day MA',
-            line=dict(color='green', dash='dash')
-        ))
-    
-    # Update layout
-    fig.update_layout(
-        title="Price and Moving Averages",
-        yaxis_title='Price (₹)',
-        xaxis_title='Date',
-        height=400,
-        showlegend=True
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # RSI Plot
-    if 'RSI' in df:
-        fig_rsi = go.Figure()
-        fig_rsi.add_trace(go.Scatter(
-            x=df.index,
-            y=df['RSI'],
-            name='RSI',
-            line=dict(color='purple')
+            y=df['Close'],
+            name='Close Price',
+            line=dict(color='blue')
         ))
         
-        # Add overbought/oversold lines
-        fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
-        fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+        if 'MA20' in df:
+            fig.add_trace(go.Scatter(
+                x=df.index,
+                y=df['MA20'],
+                name='20-Day MA',
+                line=dict(color='orange', dash='dash')
+            ))
         
-        fig_rsi.update_layout(
-            title="Relative Strength Index (RSI)",
-            yaxis_title='RSI',
+        if 'MA50' in df:
+            fig.add_trace(go.Scatter(
+                x=df.index,
+                y=df['MA50'],
+                name='50-Day MA',
+                line=dict(color='green', dash='dash')
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title="Price and Moving Averages",
+            yaxis_title='Price (₹)',
             xaxis_title='Date',
-            height=300,
+            height=400,
             showlegend=True
         )
         
-        st.plotly_chart(fig_rsi, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # RSI Plot
+        if 'RSI' in df:
+            fig_rsi = go.Figure()
+            fig_rsi.add_trace(go.Scatter(
+                x=df.index,
+                y=df['RSI'],
+                name='RSI',
+                line=dict(color='purple')
+            ))
+            
+            # Add overbought/oversold lines
+            fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
+            fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+            
+            fig_rsi.update_layout(
+                title="Relative Strength Index (RSI)",
+                yaxis_title='RSI',
+                xaxis_title='Date',
+                height=300,
+                showlegend=True
+            )
+            
+            st.plotly_chart(fig_rsi, use_container_width=True)
+    
+    with tech_tab2:
+        st.markdown("### 📅 Monthly Trend Analysis")
+        st.markdown("""
+        Analyze monthly price patterns and trends to understand longer-term market behavior.
+        This analysis helps identify seasonal patterns and major trend changes.
+        """)
+        
+        # Calculate monthly trends
+        monthly_data, monthly_stats = calculate_monthly_trends(df)
+        
+        # Display recent monthly statistics
+        st.subheader("Recent Monthly Performance")
+        recent_months = monthly_stats.tail(3)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        # Latest month metrics
+        with col1:
+            st.metric(
+                "Latest Month Change",
+                f"{recent_months['Change'].iloc[-1]:.2f}%",
+                f"{recent_months['Change'].iloc[-1] - recent_months['Change'].iloc[-2]:.2f}%"
+            )
+        
+        with col2:
+            st.metric(
+                "Price Range",
+                f"{recent_months['Range'].iloc[-1]:.2f}%",
+                f"{recent_months['Range'].iloc[-1] - recent_months['Range'].iloc[-2]:.2f}%"
+            )
+        
+        with col3:
+            st.metric(
+                "Volume Change",
+                f"{recent_months['Volume_Change'].iloc[-1]:.2f}%",
+                f"{recent_months['Volume_Change'].iloc[-1] - recent_months['Volume_Change'].iloc[-2]:.2f}%"
+            )
+        
+        # Monthly trend chart
+        fig_monthly = go.Figure()
+        
+        # Monthly OHLC
+        fig_monthly.add_trace(go.Candlestick(
+            x=monthly_data.index,
+            open=monthly_data['Open'],
+            high=monthly_data['High'],
+            low=monthly_data['Low'],
+            close=monthly_data['Close'],
+            name='Monthly OHLC'
+        ))
+        
+        # Add monthly average
+        fig_monthly.add_trace(go.Scatter(
+            x=monthly_stats.index,
+            y=monthly_stats['Average'],
+            name='Monthly Average',
+            line=dict(color='blue', dash='dash')
+        ))
+        
+        fig_monthly.update_layout(
+            title="Monthly Price Trends",
+            yaxis_title='Price (₹)',
+            xaxis_title='Month',
+            height=500,
+            showlegend=True,
+            xaxis_rangeslider_visible=False
+        )
+        
+        st.plotly_chart(fig_monthly, use_container_width=True)
+        
+        # Show detailed monthly statistics
+        with st.expander("View Detailed Monthly Statistics"):
+            st.dataframe(
+                monthly_stats.tail(12).style.format({
+                    'Average': '₹{:.2f}',
+                    'Change': '{:.2f}%',
+                    'Range': '{:.2f}%',
+                    'Volume_Change': '{:.2f}%'
+                })
+            )
 
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
