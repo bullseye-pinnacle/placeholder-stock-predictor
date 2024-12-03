@@ -799,11 +799,6 @@ def calculate_trading_probabilities(df, predictions, window=30):
                 'sell': 33.33,
                 'hold': 33.34
             },
-            'confidence': {
-                'overall': 0,
-                'trend_strength': 0,
-                'volatility_risk': 50
-            },
             'metrics': {
                 'momentum': 0,
                 'volatility': df['Close'].pct_change().std() * np.sqrt(window) * 100
@@ -844,216 +839,97 @@ def calculate_trading_probabilities(df, predictions, window=30):
     sell_prob = (sell_base / total) * 100
     hold_prob = (hold_base / total) * 100
     
-    # Calculate confidence scores
-    confidence = {
-        'overall': min(100, max(0, 100 - (momentum_std * 10))),
-        'trend_strength': min(100, max(0, abs(momentum) * 10)),
-        'volatility_risk': min(100, volatility * 2)
-    }
-    
     return {
         'probabilities': {
             'buy': buy_prob,
             'sell': sell_prob,
             'hold': hold_prob
         },
-        'confidence': confidence,
         'metrics': {
             'momentum': momentum,
             'volatility': volatility
         }
     }
 
-def display_lstm_predictions(df, stock_name, chart_type):
-    """Display LSTM-based predictions"""
-    current_price = df['Close'].iloc[-1]
-    predictions = {}
-    
-    try:
-        model = load_model(f'lstm_model_{stock_name.lower()}.keras')
-        sequence_data, scaler = prepare_sequence_data(df)
-        last_sequence = sequence_data[-1]
-        
-        # Generate predictions for different time horizons
-        col1, col2, col3 = st.columns(3)
-        for days, col in zip([30, 60, 120], [col1, col2, col3]):
-            pred = generate_predictions(model, last_sequence, scaler, days)
-            predictions[f'{days}d'] = pred
-            
-            # Display prediction metrics
-            final_price = pred[-1]
-            change_pct = ((final_price - current_price) / current_price) * 100
-            with col:
-                st.metric(
-                    f"{days}-Day Prediction",
-                    f"₹{final_price:.2f}",
-                    f"{change_pct:+.2f}%"
-                )
-        
-        # Display prediction chart
-        fig = plot_predictions(df, stock_name, predictions, chart_type)
-        st.plotly_chart(fig, use_container_width=True)
-        
-    except Exception as e:
-        st.error(f"Error generating predictions: {str(e)}")
-        st.error("Please ensure the LSTM model file exists and is valid.")
-        return None
-    
-    return predictions
-
 def display_risk_assessment(df, stock_name, predictions):
     """Display risk assessment and trading probabilities"""
     st.header("🎯 Risk Assessment")
     
-    # Calculate trading probabilities with error handling
-    try:
-        analysis = calculate_trading_probabilities(df, predictions)
-    except Exception as e:
-        st.error(f"Error calculating trading probabilities: {str(e)}")
-        return
-    
+    # Calculate trading probabilities
+    analysis = calculate_trading_probabilities(df, predictions)
     probs = analysis['probabilities']
-    conf = analysis['confidence']
     metrics = analysis['metrics']
     
-    # Display probability scores
-    st.subheader("Trading Action Probabilities")
+    # Display probability gauge charts
+    st.subheader("Trading Probabilities")
     
-    # Create three columns for probabilities
     col1, col2, col3 = st.columns(3)
     
-    # Helper function to determine probability color
-    def get_prob_color(prob):
-        if prob >= 60:
-            return "green"
-        elif prob >= 40:
-            return "orange"
-        else:
-            return "red"
-    
-    # Display probabilities with colors
     with col1:
-        st.markdown(f"""
-        <div style='text-align: center; color: {get_prob_color(probs['buy'])}'>
-            <h3 style='margin-bottom: 0px'>Buy</h3>
-            <h2 style='margin-top: 0px'>{probs['buy']:.1f}%</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=probs['buy'],
+            title={'text': "Buy Probability"},
+            gauge={'axis': {'range': [0, 100]},
+                  'bar': {'color': "green"},
+                  'steps': [
+                      {'range': [0, 30], 'color': "lightgray"},
+                      {'range': [30, 70], 'color': "gray"},
+                      {'range': [70, 100], 'color': "darkgray"}]}))
+        fig.update_layout(height=250, margin=dict(t=30, b=0))
+        st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.markdown(f"""
-        <div style='text-align: center; color: {get_prob_color(probs['sell'])}'>
-            <h3 style='margin-bottom: 0px'>Sell</h3>
-            <h2 style='margin-top: 0px'>{probs['sell']:.1f}%</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=probs['sell'],
+            title={'text': "Sell Probability"},
+            gauge={'axis': {'range': [0, 100]},
+                  'bar': {'color': "red"},
+                  'steps': [
+                      {'range': [0, 30], 'color': "lightgray"},
+                      {'range': [30, 70], 'color': "gray"},
+                      {'range': [70, 100], 'color': "darkgray"}]}))
+        fig.update_layout(height=250, margin=dict(t=30, b=0))
+        st.plotly_chart(fig, use_container_width=True)
     
     with col3:
-        st.markdown(f"""
-        <div style='text-align: center; color: {get_prob_color(probs['hold'])}'>
-            <h3 style='margin-bottom: 0px'>Hold</h3>
-            <h2 style='margin-top: 0px'>{probs['hold']:.1f}%</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Display confidence metrics
-    st.subheader("Confidence Metrics")
-    
-    # Create confidence gauge charts
-    fig = go.Figure()
-    
-    # Add gauge charts for each confidence metric
-    gauge_colors = {
-        'overall': ['red', 'orange', 'green'],
-        'trend_strength': ['blue', 'purple', 'red'],
-        'volatility_risk': ['green', 'orange', 'red']
-    }
-    
-    gauge_titles = {
-        'overall': 'Overall Confidence',
-        'trend_strength': 'Trend Strength',
-        'volatility_risk': 'Volatility Risk'
-    }
-    
-    for i, (metric, value) in enumerate(conf.items()):
-        fig.add_trace(go.Indicator(
+        fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=value,
-            domain={'row': 0, 'column': i},
-            title={'text': gauge_titles[metric]},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': gauge_colors[metric][1]},
-                'steps': [
-                    {'range': [0, 33], 'color': gauge_colors[metric][0]},
-                    {'range': [33, 66], 'color': gauge_colors[metric][1]},
-                    {'range': [66, 100], 'color': gauge_colors[metric][2]}
-                ]
-            }
-        ))
-    
-    # Update layout for gauge charts
-    fig.update_layout(
-        grid={'rows': 1, 'columns': 3},
-        height=250,
-        margin=dict(t=30, b=0)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+            value=probs['hold'],
+            title={'text': "Hold Probability"},
+            gauge={'axis': {'range': [0, 100]},
+                  'bar': {'color': "blue"},
+                  'steps': [
+                      {'range': [0, 30], 'color': "lightgray"},
+                      {'range': [30, 70], 'color': "gray"},
+                      {'range': [70, 100], 'color': "darkgray"}]}))
+        fig.update_layout(height=250, margin=dict(t=30, b=0))
+        st.plotly_chart(fig, use_container_width=True)
     
     # Display analysis summary
     st.subheader("Analysis Summary")
     
-    # Determine market condition
-    if metrics['momentum'] > 1:
-        market_condition = "Bullish 📈"
-        market_color = "green"
-    elif metrics['momentum'] < -1:
-        market_condition = "Bearish 📉"
-        market_color = "red"
+    momentum = metrics['momentum']
+    volatility = metrics['volatility']
+    
+    # Determine market condition based on metrics
+    if abs(momentum) < 5:
+        market_condition = "neutral"
+    elif momentum > 0:
+        market_condition = "bullish"
     else:
-        market_condition = "Neutral ↔️"
-        market_color = "orange"
+        market_condition = "bearish"
     
-    # Create summary text
-    summary_text = f"""
-    <div style='padding: 20px; border-radius: 5px; background-color: #f0f2f6'>
-        <p><strong>Market Condition:</strong> <span style='color: {market_color}'>{market_condition}</span></p>
-        <p><strong>Momentum:</strong> {metrics['momentum']:.2f}% (30-day prediction trend)</p>
-        <p><strong>Volatility:</strong> {metrics['volatility']:.2f}% (30-day historical)</p>
-        <p><strong>Primary Signal:</strong> {max(probs.items(), key=lambda x: x[1])[0].title()} ({max(probs.values()):.1f}% probability)</p>
-    </div>
-    """
+    # Generate summary text
+    summary = f"""Based on the 30-day prediction model, the market appears to be {market_condition}. 
+The analysis shows a {abs(momentum):.1f}% predicted price movement, with a volatility of {volatility:.1f}%.
+
+Trading Recommendation:
+{'Buy' if probs['buy'] > max(probs['sell'], probs['hold']) else 'Sell' if probs['sell'] > max(probs['buy'], probs['hold']) else 'Hold'} 
+with {max(probs['buy'], probs['sell'], probs['hold']):.1f}% probability."""
     
-    st.markdown(summary_text, unsafe_allow_html=True)
-    
-    # Add risk factors explanation in expander
-    with st.expander("Understanding Risk Factors"):
-        st.markdown("""
-        #### How to Interpret the Scores
-        
-        1. **Trading Probabilities**
-           - Buy: Likelihood of positive returns in the short term
-           - Sell: Probability of price decline
-           - Hold: Suggestion to maintain current position due to uncertainty
-        
-        2. **Confidence Metrics**
-           - Overall Confidence: Reliability of the prediction model
-           - Trend Strength: Magnitude of the predicted price movement
-           - Volatility Risk: Level of price fluctuation risk
-        
-        3. **Market Conditions**
-           - Bullish: Strong upward trend (>1% momentum)
-           - Bearish: Strong downward trend (<-1% momentum)
-           - Neutral: Sideways movement (-1% to 1% momentum)
-        
-        #### Risk Factors Considered
-        - Historical price volatility
-        - Prediction model confidence
-        - Market momentum
-        - Technical indicators
-        - Price action patterns
-        """)
+    st.write(summary)
 
 def calculate_monthly_trends(df):
     """Calculate monthly trends from historical data"""
