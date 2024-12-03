@@ -242,16 +242,11 @@ def display_lstm_predictions(df, stock_name, chart_type):
                     f"{change_pct:+.2f}%"
                 )
         
-        # Display prediction chart
-        fig = plot_predictions(df, stock_name, predictions, chart_type)
-        st.plotly_chart(fig, use_container_width=True)
+        return predictions
         
     except Exception as e:
         st.error(f"Error generating predictions: {str(e)}")
-        st.error("Please ensure the LSTM model file exists and is valid.")
-        return {}  # Return empty predictions dict if failed
-    
-    return predictions
+        return None
 
 def calculate_macd(df, fast_period=12, slow_period=26, signal_period=9):
     """Calculate MACD (Moving Average Convergence Divergence)"""
@@ -773,59 +768,65 @@ def display_stock_features(stock_name, chart_type):
                 f"{df['Volume'].iloc[-1]:,.0f}"
             )
         
+        # Generate predictions first
+        try:
+            predictions = display_lstm_predictions(df, stock_name, chart_type)
+        except Exception as e:
+            st.error(f"Error generating predictions: {str(e)}")
+            predictions = None
+        
         # Create tabs for different analysis sections
         tab1, tab2, tab3 = st.tabs(["📈 LSTM Predictions", "📊 Technical Analysis", "🎯 Risk Assessment"])
         
         with tab1:
-            predictions = display_lstm_predictions(df, stock_name, chart_type)
+            if predictions:
+                # Display prediction metrics and charts
+                st.plotly_chart(plot_predictions(df, stock_name, predictions, chart_type), use_container_width=True)
+            else:
+                st.warning("No predictions available")
         
         with tab2:
             display_technical_analysis(df, stock_name)
         
         with tab3:
-            display_risk_assessment(df, stock_name, predictions)
+            if predictions and '30d' in predictions:
+                display_risk_assessment(df, stock_name, predictions['30d'])
+            else:
+                st.warning("Predictions not available for risk assessment")
     else:
         st.error("Failed to load stock data. Please try again.")
 
-def display_placeholder_feature(df, stock_name):
-    """Placeholder for a new feature"""
-    st.subheader("🚧 Portfolio Optimization (Coming Soon)")
+def display_lstm_predictions(df, stock_name, chart_type):
+    """Display LSTM-based predictions"""
+    current_price = df['Close'].iloc[-1]
+    predictions = {}
     
-    # Example placeholder content
-    st.markdown("""
-    ### Future Features:
-    1. **Portfolio Risk Analysis**
-        - Risk metrics calculation
-        - Correlation analysis
-        - VaR estimation
+    try:
+        model = load_model(f'lstm_model_{stock_name.lower()}.keras')
+        sequence_data, scaler = prepare_sequence_data(df)
+        last_sequence = sequence_data[-1]
         
-    2. **Asset Allocation**
-        - Optimal weight calculation
-        - Rebalancing suggestions
-        - Performance tracking
-    """)
-    
-    # Example metrics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Risk Score", "Medium", "Stable")
-    with col2:
-        st.metric("Sharpe Ratio", "1.85", "+0.2")
-    with col3:
-        st.metric("Beta", "0.92", "-0.05")
-    
-    # Placeholder chart
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df.index[-30:],
-        y=df['Close'][-30:],
-        name='Current Allocation'
-    ))
-    fig.update_layout(
-        title="Portfolio Performance Preview",
-        height=400
-    )
-    st.plotly_chart(fig, use_container_width=True)
+        # Generate predictions for different time horizons
+        col1, col2, col3 = st.columns(3)
+        for days, col in zip([30, 60, 120], [col1, col2, col3]):
+            pred = generate_predictions(model, last_sequence, scaler, days)
+            predictions[f'{days}d'] = pred
+            
+            # Display prediction metrics
+            final_price = pred[-1]
+            change_pct = ((final_price - current_price) / current_price) * 100
+            with col:
+                st.metric(
+                    f"{days}-Day Prediction",
+                    f"₹{final_price:.2f}",
+                    f"{change_pct:+.2f}%"
+                )
+        
+        return predictions
+        
+    except Exception as e:
+        st.error(f"Error generating predictions: {str(e)}")
+        return None
 
 def calculate_trading_probabilities(df, predictions, window=30):
     """Calculate buy/sell/hold probabilities based on LSTM predictions"""
