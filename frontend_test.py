@@ -233,6 +233,77 @@ def calculate_monthly_trends(df):
     
     return monthly_data, monthly_stats
 
+def calculate_pivot_points(df):
+    """Calculate pivot points and support/resistance levels"""
+    pivot_data = pd.DataFrame()
+    
+    # Calculate classic pivot points
+    pivot_data['PP'] = (df['High'] + df['Low'] + df['Close']) / 3
+    pivot_data['R1'] = 2 * pivot_data['PP'] - df['Low']
+    pivot_data['S1'] = 2 * pivot_data['PP'] - df['High']
+    pivot_data['R2'] = pivot_data['PP'] + (df['High'] - df['Low'])
+    pivot_data['S2'] = pivot_data['PP'] - (df['High'] - df['Low'])
+    
+    return pivot_data
+
+def find_support_resistance_levels(df, window=20, price_threshold=0.02):
+    """Find support and resistance levels based on price action"""
+    levels = []
+    
+    # Convert to numpy array for faster computation
+    prices = df['Close'].values
+    
+    for i in range(window, len(prices) - window):
+        # Get the window of prices around current point
+        window_prices = prices[i-window:i+window]
+        current_price = prices[i]
+        
+        # Check if current price is a local minimum (support)
+        if current_price == min(window_prices):
+            levels.append({
+                'price': current_price,
+                'type': 'support',
+                'date': df.index[i]
+            })
+        
+        # Check if current price is a local maximum (resistance)
+        if current_price == max(window_prices):
+            levels.append({
+                'price': current_price,
+                'type': 'resistance',
+                'date': df.index[i]
+            })
+    
+    # Convert to DataFrame
+    levels_df = pd.DataFrame(levels)
+    
+    if not levels_df.empty:
+        # Group nearby levels
+        grouped_levels = []
+        current_price = df['Close'].iloc[-1]
+        
+        for level_type in ['support', 'resistance']:
+            type_levels = levels_df[levels_df['type'] == level_type]['price'].values
+            
+            if len(type_levels) > 0:
+                # Use clustering to group nearby price levels
+                from sklearn.cluster import DBSCAN
+                clusters = DBSCAN(eps=current_price * price_threshold, min_samples=1).fit(type_levels.reshape(-1, 1))
+                
+                # Calculate mean price for each cluster
+                unique_labels = set(clusters.labels_)
+                for label in unique_labels:
+                    cluster_prices = type_levels[clusters.labels_ == label]
+                    grouped_levels.append({
+                        'price': float(np.mean(cluster_prices)),
+                        'type': level_type,
+                        'strength': len(cluster_prices)  # Number of points in cluster indicates strength
+                    })
+        
+        return pd.DataFrame(grouped_levels)
+    
+    return pd.DataFrame(columns=['price', 'type', 'strength'])
+
 def display_lstm_predictions(df, stock_name, chart_type):
     """Display LSTM-based predictions"""
     current_price = df['Close'].iloc[-1]
@@ -275,7 +346,11 @@ def display_technical_analysis(df, stock_name):
     st.subheader("📊 Technical Analysis Dashboard")
     
     # Add tabs for different types of analysis
-    tech_tab1, tech_tab2 = st.tabs(["📈 Technical Indicators", "📅 Monthly Trends"])
+    tech_tab1, tech_tab2, tech_tab3 = st.tabs([
+        "📈 Technical Indicators",
+        "📅 Monthly Trends",
+        "🎯 Support & Resistance"
+    ])
     
     with tech_tab1:
         # Display technical indicators with explanations
@@ -456,6 +531,116 @@ def display_technical_analysis(df, stock_name):
                     'Volume_Change': '{:.2f}%'
                 })
             )
+
+    with tech_tab3:
+        st.markdown("### 🎯 Support & Resistance Levels")
+        st.markdown("""
+        Analyze key price levels where the stock has historically found support (price floor) 
+        or resistance (price ceiling). These levels can help identify potential entry and exit points.
+        """)
+        
+        # Calculate pivot points
+        pivot_data = calculate_pivot_points(df)
+        
+        # Find support and resistance levels
+        levels_df = find_support_resistance_levels(df)
+        
+        # Current price for reference
+        current_price = df['Close'].iloc[-1]
+        
+        # Display current levels
+        st.subheader("Current Price Levels")
+        
+        # Create three columns for different level types
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Pivot Points**")
+            st.metric("Current Price", f"₹{current_price:.2f}")
+            st.metric("Pivot Point", f"₹{pivot_data['PP'].iloc[-1]:.2f}")
+        
+        with col2:
+            st.markdown("**Resistance Levels**")
+            st.metric("R1", f"₹{pivot_data['R1'].iloc[-1]:.2f}")
+            st.metric("R2", f"₹{pivot_data['R2'].iloc[-1]:.2f}")
+        
+        with col3:
+            st.markdown("**Support Levels**")
+            st.metric("S1", f"₹{pivot_data['S1'].iloc[-1]:.2f}")
+            st.metric("S2", f"₹{pivot_data['S2'].iloc[-1]:.2f}")
+        
+        # Plot support and resistance levels
+        fig = go.Figure()
+        
+        # Add price line
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['Close'],
+            name='Close Price',
+            line=dict(color='blue')
+        ))
+        
+        # Add pivot point lines
+        for level, color in [('PP', 'gray'), ('R1', 'red'), ('R2', 'darkred'),
+                           ('S1', 'green'), ('S2', 'darkgreen')]:
+            fig.add_trace(go.Scatter(
+                x=pivot_data.index,
+                y=pivot_data[level],
+                name=f'{level}',
+                line=dict(color=color, dash='dash'),
+                opacity=0.7
+            ))
+        
+        # Add historical support/resistance levels
+        if not levels_df.empty:
+            for level_type in ['support', 'resistance']:
+                type_levels = levels_df[levels_df['type'] == level_type]
+                for _, level in type_levels.iterrows():
+                    fig.add_hline(
+                        y=level['price'],
+                        line_dash="dot",
+                        line_color="green" if level_type == "support" else "red",
+                        opacity=min(0.3 + (level['strength'] / 10), 0.8),  # Stronger levels are more opaque
+                        annotation_text=f"{level_type.title()} (Strength: {level['strength']})"
+                    )
+        
+        fig.update_layout(
+            title="Price with Support & Resistance Levels",
+            yaxis_title='Price (₹)',
+            xaxis_title='Date',
+            height=600,
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Add explanatory text
+        st.markdown("""
+        #### Understanding the Levels
+        
+        - **Pivot Points (PP)**: Key reference level calculated from previous high, low, and close prices
+        - **Resistance (R1, R2)**: Levels where price might face selling pressure
+        - **Support (S1, S2)**: Levels where price might find buying interest
+        
+        The dotted horizontal lines show historical support and resistance levels based on price action.
+        The strength of these levels is indicated by their opacity - stronger levels are more opaque.
+        """)
+        
+        # Show detailed levels in an expander
+        with st.expander("View Detailed Price Levels"):
+            if not levels_df.empty:
+                # Sort levels by price
+                levels_df_sorted = levels_df.sort_values('price', ascending=False)
+                
+                # Format and display
+                st.dataframe(
+                    levels_df_sorted.style.format({
+                        'price': '₹{:.2f}',
+                        'strength': '{:.0f}'
+                    })
+                )
+            else:
+                st.write("No significant price levels detected in the current time frame.")
 
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
