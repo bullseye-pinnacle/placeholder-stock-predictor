@@ -801,7 +801,8 @@ def calculate_trading_probabilities(df, predictions, window=30):
             },
             'metrics': {
                 'momentum': 0,
-                'volatility': df['Close'].pct_change().std() * np.sqrt(window) * 100
+                'volatility': df['Close'].pct_change().std() * np.sqrt(window) * 100,
+                'risk_reward': 0
             }
         }
     
@@ -820,6 +821,18 @@ def calculate_trading_probabilities(df, predictions, window=30):
     
     # Calculate volatility
     volatility = df['Close'].pct_change().std() * np.sqrt(window) * 100
+    
+    # Calculate Risk/Reward Ratio
+    # Use historical volatility to estimate potential loss
+    potential_loss = current_price * (volatility / 100)  # Estimated max loss based on volatility
+    
+    # Use predicted price movement for potential gain
+    if momentum > 0:
+        potential_gain = current_price * (abs(momentum) / 100)
+        risk_reward = potential_loss / max(potential_gain, 0.01)  # Avoid division by zero
+    else:
+        potential_gain = current_price * (abs(momentum) / 100)
+        risk_reward = potential_loss / max(potential_gain, 0.01)  # Avoid division by zero
     
     # Base probabilities on price movement and volatility
     if momentum > 0:
@@ -847,7 +860,10 @@ def calculate_trading_probabilities(df, predictions, window=30):
         },
         'metrics': {
             'momentum': momentum,
-            'volatility': volatility
+            'volatility': volatility,
+            'risk_reward': risk_reward,
+            'potential_loss': potential_loss,
+            'potential_gain': potential_gain
         }
     }
 
@@ -907,6 +923,25 @@ def display_risk_assessment(df, stock_name, predictions):
         fig.update_layout(height=250, margin=dict(t=30, b=0))
         st.plotly_chart(fig, use_container_width=True)
     
+    # Display Risk/Reward Ratio
+    st.subheader("Risk/Reward Analysis")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        fig = go.Figure(go.Indicator(
+            mode="number+delta",
+            value=metrics['risk_reward'],
+            title={'text': "Risk/Reward Ratio"},
+            delta={'reference': 1, 'relative': True},
+            number={'prefix': "1:", 'valueformat': ".2f"}))
+        fig.update_layout(height=200)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.metric("Potential Gain", f"₹{metrics['potential_gain']:,.2f}")
+        st.metric("Potential Loss", f"₹{metrics['potential_loss']:,.2f}")
+    
     # Display analysis summary
     st.subheader("Analysis Summary")
     
@@ -927,7 +962,11 @@ The analysis shows a {abs(momentum):.1f}% predicted price movement, with a volat
 
 Trading Recommendation:
 {'Buy' if probs['buy'] > max(probs['sell'], probs['hold']) else 'Sell' if probs['sell'] > max(probs['buy'], probs['hold']) else 'Hold'} 
-with {max(probs['buy'], probs['sell'], probs['hold']):.1f}% probability."""
+with {max(probs['buy'], probs['sell'], probs['hold']):.1f}% probability.
+
+Risk/Reward Assessment:
+The trade has a risk/reward ratio of 1:{metrics['risk_reward']:.2f}, indicating a 
+{'favorable' if metrics['risk_reward'] < 1 else 'balanced' if metrics['risk_reward'] == 1 else 'cautionary'} risk profile."""
     
     st.write(summary)
 
