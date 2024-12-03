@@ -339,62 +339,104 @@ def display_technical_analysis(df, stock_name):
         st.plotly_chart(fig, use_container_width=True)
     
     with tech_tab3:
-        # Support and Resistance Analysis
-        st.markdown("### Support & Resistance Levels")
+        st.markdown("### Support & Resistance Analysis")
+        st.markdown("""
+        Key price levels where the stock tends to find support (floor) or resistance (ceiling).
+        These levels can help identify potential entry and exit points.
+        """)
         
-        # Calculate support and resistance levels
+        # Calculate pivot points and support/resistance levels
+        pivot_data = calculate_pivot_points(df)
         levels = find_support_resistance_levels(df)
         
+        current_price = df['Close'].iloc[-1]
+        
+        # Display current levels
+        st.subheader("Price Levels")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Pivot Points**")
+            st.metric("Current Price", f"₹{current_price:.2f}")
+            st.metric("Pivot Point", f"₹{pivot_data['PP'].iloc[-1]:.2f}")
+        
+        with col2:
+            st.markdown("**Resistance Levels**")
+            st.metric("R1", f"₹{pivot_data['R1'].iloc[-1]:.2f}")
+            st.metric("R2", f"₹{pivot_data['R2'].iloc[-1]:.2f}")
+        
+        with col3:
+            st.markdown("**Support Levels**")
+            st.metric("S1", f"₹{pivot_data['S1'].iloc[-1]:.2f}")
+            st.metric("S2", f"₹{pivot_data['S2'].iloc[-1]:.2f}")
+        
+        # Plot with both pivot points and support/resistance levels
+        fig = go.Figure()
+        
+        # Add price line
+        fig.add_trace(go.Scatter(
+            x=df.index[-90:],  # Last 90 days
+            y=df['Close'][-90:],
+            name='Price',
+            line=dict(color='blue')
+        ))
+        
+        # Add pivot point lines
+        pivot_levels = {
+            'PP': ('gray', 'Pivot'),
+            'R1': ('red', 'Resistance 1'),
+            'R2': ('darkred', 'Resistance 2'),
+            'S1': ('green', 'Support 1'),
+            'S2': ('darkgreen', 'Support 2')
+        }
+        
+        for level, (color, name) in pivot_levels.items():
+            fig.add_hline(
+                y=pivot_data[level].iloc[-1],
+                line_dash="dash",
+                line_color=color,
+                annotation_text=f"{name} (₹{pivot_data[level].iloc[-1]:.2f})"
+            )
+        
+        # Add historical support/resistance levels
         if not levels.empty:
-            # Display current levels
-            st.markdown("#### Current Price Levels")
-            
-            current_price = df['Close'].iloc[-1]
-            
-            # Sort levels by price
-            levels_sorted = levels.sort_values('price', ascending=False)
-            
-            # Display levels with distance from current price
-            for _, level in levels_sorted.iterrows():
-                price = level['price']
-                distance = ((price - current_price) / current_price) * 100
-                
-                st.metric(
-                    f"{level['type'].title()} Level",
-                    f"₹{price:.2f}",
-                    f"{distance:+.2f}% from current price"
-                )
-            
-            # Plot price with support and resistance levels
-            fig = go.Figure()
-            
-            # Add price line
-            fig.add_trace(go.Scatter(
-                x=df.index[-90:],  # Last 90 days
-                y=df['Close'][-90:],
-                name='Price',
-                line=dict(color='blue')
-            ))
-            
-            # Add support and resistance lines
             for _, level in levels.iterrows():
                 fig.add_hline(
                     y=level['price'],
-                    line_dash="dash",
+                    line_dash="dot",
                     line_color="green" if level['type'] == "support" else "red",
-                    annotation_text=f"{level['type'].title()} ₹{level['price']:.2f}"
+                    opacity=0.5,
+                    annotation_text=f"Historical {level['type'].title()} (₹{level['price']:.2f})"
                 )
-            
-            fig.update_layout(
-                title="Price with Support & Resistance Levels (90 Days)",
-                xaxis_title="Date",
-                yaxis_title="Price (₹)",
-                height=400
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("No significant support or resistance levels detected")
+        
+        fig.update_layout(
+            title="Price with Support & Resistance Levels (90 Days)",
+            xaxis_title="Date",
+            yaxis_title="Price (₹)",
+            height=500,
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Show historical levels in an expander
+        if not levels.empty:
+            with st.expander("View Historical Price Levels"):
+                # Sort levels by price
+                levels_sorted = levels.sort_values('price', ascending=False)
+                
+                # Calculate distance from current price
+                levels_sorted['Distance'] = ((levels_sorted['price'] - current_price) / current_price) * 100
+                
+                # Format and display
+                st.dataframe(
+                    levels_sorted.style.format({
+                        'price': '₹{:.2f}',
+                        'strength': '{:.0f}',
+                        'Distance': '{:+.2f}%'
+                    })
+                )
 
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
