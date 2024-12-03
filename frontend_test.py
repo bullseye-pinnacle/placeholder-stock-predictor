@@ -253,37 +253,15 @@ def display_lstm_predictions(df, stock_name, chart_type):
     
     return predictions
 
-def calculate_macd(df, fast_period=12, slow_period=26, signal_period=9):
-    """Calculate MACD (Moving Average Convergence Divergence)"""
-    # Calculate the exponential moving averages
-    exp1 = df['Close'].ewm(span=fast_period, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=slow_period, adjust=False).mean()
-    
-    # Calculate MACD line
-    macd_line = exp1 - exp2
-    
-    # Calculate signal line
-    signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
-    
-    # Calculate MACD histogram
-    macd_histogram = macd_line - signal_line
-    
-    return pd.DataFrame({
-        'MACD': macd_line,
-        'Signal': signal_line,
-        'Histogram': macd_histogram
-    })
-
 def display_technical_analysis(df, stock_name):
     """Display technical analysis dashboard"""
     st.subheader("📊 Technical Analysis Dashboard")
     
     # Add tabs for different types of analysis
-    tech_tab1, tech_tab2, tech_tab3, tech_tab4 = st.tabs([
+    tech_tab1, tech_tab2, tech_tab3 = st.tabs([
         "📈 Technical Indicators",
         "📅 Monthly Trends",
-        "🎯 Support & Resistance",
-        "📊 MACD Analysis"
+        "🎯 Support & Resistance"
     ])
     
     with tech_tab1:
@@ -308,442 +286,115 @@ def display_technical_analysis(df, stock_name):
                 "desc": "50-Day Moving Average - Medium-term trend indicator."
             },
             "Volatility": {
-                "value": df['Volatility'].iloc[-1] if 'Volatility' in df else None,
-                "desc": "20-Day Rolling Volatility - Measures price fluctuation intensity."
+                "value": df['Volatility'].iloc[-1] * 100 if 'Volatility' in df else None,
+                "desc": "20-Day Volatility - Measures price fluctuation intensity."
             }
         }
         
-        # Display indicators with metrics and descriptions
-        for name, info in tech_indicators.items():
-            st.write(f"**{name}**")
-            if info["value"] is not None:
-                st.metric(name, f"{info['value']:.2f}")
-            else:
-                st.metric(name, "N/A")
-            st.caption(info["desc"])
-            st.write("---")
-        
-        # Plot technical indicators
-        fig = go.Figure()
-        
-        # Price and Moving Averages
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['Close'],
-            name='Close Price',
-            line=dict(color='blue')
-        ))
-        
-        if 'MA20' in df:
-            fig.add_trace(go.Scatter(
-                x=df.index,
-                y=df['MA20'],
-                name='20-Day MA',
-                line=dict(color='orange', dash='dash')
-            ))
-        
-        if 'MA50' in df:
-            fig.add_trace(go.Scatter(
-                x=df.index,
-                y=df['MA50'],
-                name='50-Day MA',
-                line=dict(color='green', dash='dash')
-            ))
-        
-        # Update layout
-        fig.update_layout(
-            title="Price and Moving Averages",
-            yaxis_title='Price (₹)',
-            xaxis_title='Date',
-            height=400,
-            showlegend=True
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # RSI Plot
-        if 'RSI' in df:
-            fig_rsi = go.Figure()
-            fig_rsi.add_trace(go.Scatter(
-                x=df.index,
-                y=df['RSI'],
-                name='RSI',
-                line=dict(color='purple')
-            ))
-            
-            # Add overbought/oversold lines
-            fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
-            fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
-            
-            fig_rsi.update_layout(
-                title="Relative Strength Index (RSI)",
-                yaxis_title='RSI',
-                xaxis_title='Date',
-                height=300,
-                showlegend=True
-            )
-            
-            st.plotly_chart(fig_rsi, use_container_width=True)
+        # Display indicators in a grid
+        cols = st.columns(2)
+        for i, (name, info) in enumerate(tech_indicators.items()):
+            with cols[i % 2]:
+                st.metric(
+                    name,
+                    f"₹{info['value']:.2f}" if name.endswith("MA") else f"{info['value']:.2f}%",
+                    help=info['desc']
+                )
     
     with tech_tab2:
-        st.markdown("### 📅 Monthly Trend Analysis")
-        st.markdown("""
-        Analyze monthly price patterns and trends to understand longer-term market behavior.
-        This analysis helps identify seasonal patterns and major trend changes.
-        """)
-        
-        # Calculate monthly trends
+        # Monthly trends analysis
         monthly_data, monthly_stats = calculate_monthly_trends(df)
         
-        # Display recent monthly statistics
-        st.subheader("Recent Monthly Performance")
-        recent_months = monthly_stats.tail(3)
+        st.markdown("### Monthly Price Trends")
         
-        col1, col2, col3 = st.columns(3)
-        
-        # Latest month metrics
-        with col1:
-            st.metric(
-                "Latest Month Change",
-                f"{recent_months['Change'].iloc[-1]:.2f}%",
-                f"{recent_months['Change'].iloc[-1] - recent_months['Change'].iloc[-2]:.2f}%"
-            )
-        
-        with col2:
-            st.metric(
-                "Price Range",
-                f"{recent_months['Range'].iloc[-1]:.2f}%",
-                f"{recent_months['Range'].iloc[-1] - recent_months['Range'].iloc[-2]:.2f}%"
-            )
-        
-        with col3:
-            st.metric(
-                "Volume Change",
-                f"{recent_months['Volume_Change'].iloc[-1]:.2f}%",
-                f"{recent_months['Volume_Change'].iloc[-1] - recent_months['Volume_Change'].iloc[-2]:.2f}%"
-            )
-        
-        # Monthly trend chart
-        fig_monthly = go.Figure()
-        
-        # Monthly OHLC
-        fig_monthly.add_trace(go.Candlestick(
-            x=monthly_data.index,
-            open=monthly_data['Open'],
-            high=monthly_data['High'],
-            low=monthly_data['Low'],
-            close=monthly_data['Close'],
-            name='Monthly OHLC'
-        ))
-        
-        # Add monthly average
-        fig_monthly.add_trace(go.Scatter(
-            x=monthly_stats.index,
-            y=monthly_stats['Average'],
-            name='Monthly Average',
-            line=dict(color='blue', dash='dash')
-        ))
-        
-        fig_monthly.update_layout(
-            title="Monthly Price Trends",
-            yaxis_title='Price (₹)',
-            xaxis_title='Month',
-            height=500,
-            showlegend=True,
-            xaxis_rangeslider_visible=False
-        )
-        
-        st.plotly_chart(fig_monthly, use_container_width=True)
-        
-        # Show detailed monthly statistics
-        with st.expander("View Detailed Monthly Statistics"):
-            st.dataframe(
-                monthly_stats.tail(12).style.format({
-                    'Average': '₹{:.2f}',
-                    'Change': '{:.2f}%',
-                    'Range': '{:.2f}%',
-                    'Volume_Change': '{:.2f}%'
-                })
-            )
-
-    with tech_tab3:
-        st.markdown("### 🎯 Support & Resistance Levels")
-        st.markdown("""
-        Analyze key price levels where the stock has historically found support (price floor) 
-        or resistance (price ceiling). These levels can help identify potential entry and exit points.
-        """)
-        
-        # Calculate pivot points
-        pivot_data = calculate_pivot_points(df)
-        
-        # Find support and resistance levels
-        levels_df = find_support_resistance_levels(df)
-        
-        # Current price for reference
-        current_price = df['Close'].iloc[-1]
-        
-        # Display current levels
-        st.subheader("Current Price Levels")
-        
-        # Create three columns for different level types
-        col1, col2, col3 = st.columns(3)
+        # Display monthly statistics
+        col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Pivot Points**")
-            st.metric("Current Price", f"₹{current_price:.2f}")
-            st.metric("Pivot Point", f"₹{pivot_data['PP'].iloc[-1]:.2f}")
+            st.metric("Average Monthly Change", 
+                     f"{monthly_stats['Change'].mean():.2f}%",
+                     f"{monthly_stats['Change'].iloc[-1]:.2f}% (Last Month)")
         
         with col2:
-            st.markdown("**Resistance Levels**")
-            st.metric("R1", f"₹{pivot_data['R1'].iloc[-1]:.2f}")
-            st.metric("R2", f"₹{pivot_data['R2'].iloc[-1]:.2f}")
+            st.metric("Average Monthly Range",
+                     f"{monthly_stats['Range'].mean():.2f}%",
+                     f"{monthly_stats['Range'].iloc[-1]:.2f}% (Last Month)")
         
-        with col3:
-            st.markdown("**Support Levels**")
-            st.metric("S1", f"₹{pivot_data['S1'].iloc[-1]:.2f}")
-            st.metric("S2", f"₹{pivot_data['S2'].iloc[-1]:.2f}")
-        
-        # Plot support and resistance levels
+        # Plot monthly price trends
         fig = go.Figure()
-        
-        # Add price line
         fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['Close'],
-            name='Close Price',
+            x=monthly_data.index,
+            y=monthly_data['Close'],
+            name='Monthly Close',
             line=dict(color='blue')
         ))
         
-        # Add pivot point lines
-        for level, color in [('PP', 'gray'), ('R1', 'red'), ('R2', 'darkred'),
-                           ('S1', 'green'), ('S2', 'darkgreen')]:
-            fig.add_trace(go.Scatter(
-                x=pivot_data.index,
-                y=pivot_data[level],
-                name=f'{level}',
-                line=dict(color=color, dash='dash'),
-                opacity=0.7
-            ))
-        
-        # Add historical support/resistance levels
-        if not levels_df.empty:
-            for level_type in ['support', 'resistance']:
-                type_levels = levels_df[levels_df['type'] == level_type]
-                for _, level in type_levels.iterrows():
-                    fig.add_hline(
-                        y=level['price'],
-                        line_dash="dot",
-                        line_color="green" if level_type == "support" else "red",
-                        opacity=min(0.3 + (level['strength'] / 10), 0.8),  # Stronger levels are more opaque
-                        annotation_text=f"{level_type.title()} (Strength: {level['strength']})"
-                    )
-        
         fig.update_layout(
-            title="Price with Support & Resistance Levels",
-            yaxis_title='Price (₹)',
-            xaxis_title='Date',
-            height=600,
-            showlegend=True
+            title="Monthly Price Trend",
+            xaxis_title="Date",
+            yaxis_title="Price (₹)",
+            height=400
         )
         
         st.plotly_chart(fig, use_container_width=True)
+    
+    with tech_tab3:
+        # Support and Resistance Analysis
+        st.markdown("### Support & Resistance Levels")
         
-        # Add explanatory text
-        st.markdown("""
-        #### Understanding the Levels
+        # Calculate support and resistance levels
+        levels = find_support_resistance_levels(df)
         
-        - **Pivot Points (PP)**: Key reference level calculated from previous high, low, and close prices
-        - **Resistance (R1, R2)**: Levels where price might face selling pressure
-        - **Support (S1, S2)**: Levels where price might find buying interest
-        
-        The dotted horizontal lines show historical support and resistance levels based on price action.
-        The strength of these levels is indicated by their opacity - stronger levels are more opaque.
-        """)
-        
-        # Show detailed levels in an expander
-        with st.expander("View Detailed Price Levels"):
-            if not levels_df.empty:
-                # Sort levels by price
-                levels_df_sorted = levels_df.sort_values('price', ascending=False)
+        if not levels.empty:
+            # Display current levels
+            st.markdown("#### Current Price Levels")
+            
+            current_price = df['Close'].iloc[-1]
+            
+            # Sort levels by price
+            levels_sorted = levels.sort_values('price', ascending=False)
+            
+            # Display levels with distance from current price
+            for _, level in levels_sorted.iterrows():
+                price = level['price']
+                distance = ((price - current_price) / current_price) * 100
                 
-                # Format and display
-                st.dataframe(
-                    levels_df_sorted.style.format({
-                        'price': '₹{:.2f}',
-                        'strength': '{:.0f}'
-                    })
+                st.metric(
+                    f"{level['type'].title()} Level",
+                    f"₹{price:.2f}",
+                    f"{distance:+.2f}% from current price"
                 )
-            else:
-                st.write("No significant price levels detected in the current time frame.")
-
-    with tech_tab4:
-        st.markdown("### 📊 MACD Analysis")
-        st.markdown("""
-        The Moving Average Convergence Divergence (MACD) is a trend-following momentum indicator that shows the relationship 
-        between two moving averages of a security's price. It helps identify trend direction, momentum, and potential reversal points.
-        """)
-        
-        # Calculate MACD
-        macd_data = calculate_macd(df)
-        
-        # Current MACD values
-        current_macd = macd_data['MACD'].iloc[-1]
-        current_signal = macd_data['Signal'].iloc[-1]
-        current_hist = macd_data['Histogram'].iloc[-1]
-        
-        # Display current values
-        st.subheader("Current MACD Metrics")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric(
-                "MACD Line",
-                f"{current_macd:.3f}",
-                f"{current_macd - macd_data['MACD'].iloc[-2]:.3f}"
-            )
-        
-        with col2:
-            st.metric(
-                "Signal Line",
-                f"{current_signal:.3f}",
-                f"{current_signal - macd_data['Signal'].iloc[-2]:.3f}"
-            )
-        
-        with col3:
-            st.metric(
-                "Histogram",
-                f"{current_hist:.3f}",
-                f"{current_hist - macd_data['Histogram'].iloc[-2]:.3f}"
-            )
-        
-        # MACD Signal Analysis
-        signal_analysis = ""
-        if current_macd > current_signal:
-            if current_hist > macd_data['Histogram'].iloc[-2]:
-                signal_analysis = "🟢 **Bullish Signal**: MACD is above signal line and momentum is increasing"
-            else:
-                signal_analysis = "🟡 **Bullish but Weakening**: MACD is above signal line but momentum is decreasing"
-        else:
-            if current_hist < macd_data['Histogram'].iloc[-2]:
-                signal_analysis = "🔴 **Bearish Signal**: MACD is below signal line and momentum is decreasing"
-            else:
-                signal_analysis = "🟡 **Bearish but Improving**: MACD is below signal line but momentum is increasing"
-        
-        st.markdown(f"### Signal Analysis\n{signal_analysis}")
-        
-        # Create MACD visualization
-        fig = make_subplots(rows=2, cols=1, 
-                          row_heights=[0.7, 0.3],
-                          shared_xaxes=True,
-                          vertical_spacing=0.05)
-        
-        # Add price to top subplot
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['Close'],
+            
+            # Plot price with support and resistance levels
+            fig = go.Figure()
+            
+            # Add price line
+            fig.add_trace(go.Scatter(
+                x=df.index[-90:],  # Last 90 days
+                y=df['Close'][-90:],
                 name='Price',
                 line=dict(color='blue')
-            ),
-            row=1, col=1
-        )
-        
-        # Add MACD lines to bottom subplot
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=macd_data['MACD'],
-                name='MACD',
-                line=dict(color='blue')
-            ),
-            row=2, col=1
-        )
-        
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=macd_data['Signal'],
-                name='Signal',
-                line=dict(color='orange')
-            ),
-            row=2, col=1
-        )
-        
-        # Add MACD histogram
-        colors = ['red' if val < 0 else 'green' for val in macd_data['Histogram']]
-        fig.add_trace(
-            go.Bar(
-                x=df.index,
-                y=macd_data['Histogram'],
-                name='Histogram',
-                marker_color=colors
-            ),
-            row=2, col=1
-        )
-        
-        # Update layout for gauge charts
-        fig.update_layout(
-            grid={'rows': 1, 'columns': 3},
-            height=800,
-            margin=dict(t=30, b=0)
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Add educational content
-        with st.expander("Understanding MACD"):
-            st.markdown("""
-            #### How to Read MACD
+            ))
             
-            1. **MACD Line (Blue)**
-               - Calculated as the difference between 12-day and 26-day EMAs
-               - Shows the relationship between short-term and long-term price movements
-            
-            2. **Signal Line (Orange)**
-               - 9-day EMA of the MACD line
-               - Acts as a trigger for buy and sell signals
-            
-            3. **Histogram**
-               - Visual representation of the distance between MACD and signal line
-               - Green bars: MACD above signal line (bullish)
-               - Red bars: MACD below signal line (bearish)
-            
-            #### Common Trading Signals
-            
-            - **Bullish Crossover**: MACD crosses above signal line
-            - **Bearish Crossover**: MACD crosses below signal line
-            - **Divergence**: When MACD trend differs from price trend
-            - **Histogram Changes**: Shows momentum and potential trend changes
-            """)
-            
-            # Show recent crossovers
-            st.markdown("#### Recent Crossovers")
-            crossovers = []
-            for i in range(1, len(macd_data)):
-                prev_diff = macd_data['MACD'].iloc[i-1] - macd_data['Signal'].iloc[i-1]
-                curr_diff = macd_data['MACD'].iloc[i] - macd_data['Signal'].iloc[i]
-                
-                if (prev_diff < 0 and curr_diff > 0):
-                    crossovers.append({
-                        'Date': df.index[i].strftime('%Y-%m-%d'),
-                        'Type': 'Bullish',
-                        'Price': f"₹{df['Close'].iloc[i]:.2f}"
-                    })
-                elif (prev_diff > 0 and curr_diff < 0):
-                    crossovers.append({
-                        'Date': df.index[i].strftime('%Y-%m-%d'),
-                        'Type': 'Bearish',
-                        'Price': f"₹{df['Close'].iloc[i]:.2f}"
-                    })
-            
-            if crossovers:
-                st.dataframe(
-                    pd.DataFrame(crossovers[-5:]),  # Show last 5 crossovers
-                    hide_index=True
+            # Add support and resistance lines
+            for _, level in levels.iterrows():
+                fig.add_hline(
+                    y=level['price'],
+                    line_dash="dash",
+                    line_color="green" if level['type'] == "support" else "red",
+                    annotation_text=f"{level['type'].title()} ₹{level['price']:.2f}"
                 )
-            else:
-                st.write("No recent crossovers detected")
+            
+            fig.update_layout(
+                title="Price with Support & Resistance Levels (90 Days)",
+                xaxis_title="Date",
+                yaxis_title="Price (₹)",
+                height=400
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No significant support or resistance levels detected")
 
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
