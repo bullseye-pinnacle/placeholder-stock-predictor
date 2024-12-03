@@ -213,10 +213,87 @@ def plot_predictions(df, stock_name, predictions_dict, chart_type="Candlestick")
 
     return fig
 
+def display_lstm_predictions(df, stock_name, chart_type):
+    """Display LSTM-based predictions"""
+    current_price = df['Close'].iloc[-1]
+    predictions = {}
+    
+    try:
+        model = load_model(f'lstm_model_{stock_name.lower()}.keras')
+        sequence_data, scaler = prepare_sequence_data(df)
+        last_sequence = sequence_data[-1]
+        
+        # Generate predictions for different time horizons
+        col1, col2, col3 = st.columns(3)
+        for days, col in zip([30, 60, 120], [col1, col2, col3]):
+            pred = generate_predictions(model, last_sequence, scaler, days)
+            predictions[f'{days}d'] = pred
+            
+            # Display prediction metrics
+            final_price = pred[-1]
+            change_pct = ((final_price - current_price) / current_price) * 100
+            with col:
+                st.metric(
+                    f"{days}-Day Prediction",
+                    f"₹{final_price:.2f}",
+                    f"{change_pct:+.2f}%"
+                )
+        
+        # Display prediction chart
+        fig = plot_predictions(df, stock_name, predictions, chart_type)
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"Error generating predictions: {str(e)}")
+        st.error("Please ensure the LSTM model file exists and is valid.")
+        return {}  # Return empty predictions dict if failed
+    
+    return predictions
+
+def display_placeholder_feature(df, stock_name):
+    """Placeholder for a new feature"""
+    st.subheader("🚧 Portfolio Optimization (Coming Soon)")
+    
+    # Example placeholder content
+    st.markdown("""
+    ### Future Features:
+    1. **Portfolio Risk Analysis**
+        - Risk metrics calculation
+        - Correlation analysis
+        - VaR estimation
+        
+    2. **Asset Allocation**
+        - Optimal weight calculation
+        - Rebalancing suggestions
+        - Performance tracking
+    """)
+    
+    # Example metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Risk Score", "Medium", "Stable")
+    with col2:
+        st.metric("Sharpe Ratio", "1.85", "+0.2")
+    with col3:
+        st.metric("Beta", "0.92", "-0.05")
+    
+    # Placeholder chart
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df.index[-30:],
+        y=df['Close'][-30:],
+        name='Current Allocation'
+    ))
+    fig.update_layout(
+        title="Portfolio Performance Preview",
+        height=400
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
     st.header(f"Analysis Dashboard: {stock_name}")
-
+    
     # Load and display historical data
     with st.spinner('Loading historical data...'):
         df = load_stock_data(stock_name)
@@ -224,7 +301,7 @@ def display_stock_features(stock_name, chart_type):
             # Display current price and daily change
             current_price = df['Close'].iloc[-1]
             price_change = ((current_price - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
-
+            
             col1, col2 = st.columns(2)
             with col1:
                 st.metric(
@@ -237,55 +314,33 @@ def display_stock_features(stock_name, chart_type):
                     "Trading Volume",
                     f"{df['Volume'].iloc[-1]:,.0f}"
                 )
-
-            predictions = {}
-            # Load LSTM model and generate predictions
-            try:
-                model = load_model(f'lstm_model_{stock_name.lower()}.keras')
-                sequence_data, scaler = prepare_sequence_data(df)
-                last_sequence = sequence_data[-1]
-
-                for days in [30, 60, 120]:
-                    pred = generate_predictions(model, last_sequence, scaler, days)
-                    predictions[f'{days}d'] = pred
-
-                    # Display prediction metrics
-                    final_price = pred[-1]
-                    change_pct = ((final_price - current_price) / current_price) * 100
-                    st.metric(
-                        f"{days}-Day Prediction",
-                        f"₹{final_price:.2f}",
-                        f"{change_pct:+.2f}%"
-                    )
-
-            except Exception as e:
-                st.error(f"Error generating predictions: {str(e)}")
-                st.error("Please ensure the LSTM model file exists and is valid.")
-
-            # Always show the plot, with or without predictions
-            fig = plot_predictions(df, stock_name, predictions, chart_type)
-            st.plotly_chart(fig, use_container_width=True)
-
+            
+            # Create tabs for different features
+            tab1, tab2 = st.tabs(["📈 LSTM Predictions", "💼 Portfolio Analysis"])
+            
+            with tab1:
+                predictions = display_lstm_predictions(df, stock_name, chart_type)
+            
+            with tab2:
+                display_placeholder_feature(df, stock_name)
+            
+            # Technical Indicators (shown below tabs)
+            st.subheader("Technical Indicators")
+            tech_indicators = {
+                "RSI (14)": df['RSI'].iloc[-1] if 'RSI' in df else None,
+                "20-Day MA": df['MA20'].iloc[-1] if 'MA20' in df else None,
+                "50-Day MA": df['MA50'].iloc[-1] if 'MA50' in df else None,
+                "Volatility": df['Volatility'].iloc[-1] if 'Volatility' in df else None
+            }
+            
+            cols = st.columns(len(tech_indicators))
+            for col, (name, value) in zip(cols, tech_indicators.items()):
+                if value is not None:
+                    col.metric(name, f"{value:.2f}")
+                else:
+                    col.metric(name, "N/A")
         else:
             st.error(f"Failed to load data for {stock_name}")
-
-    # Additional features section
-    st.subheader("Technical Indicators")
-    if df is not None and not df.empty:
-        tech_indicators = {
-            "RSI (14)": df['RSI'].iloc[-1] if 'RSI' in df else None,
-            "20-Day MA": df['MA20'].iloc[-1] if 'MA20' in df else None,
-            "50-Day MA": df['MA50'].iloc[-1] if 'MA50' in df else None,
-            "Volatility": df['Volatility'].iloc[-1] if 'Volatility' in df else None
-        }
-
-        # Display technical indicators in columns
-        cols = st.columns(len(tech_indicators))
-        for col, (name, value) in zip(cols, tech_indicators.items()):
-            if value is not None:
-                col.metric(name, f"{value:.2f}")
-            else:
-                col.metric(name, "N/A")
 
 def main():
     st.set_page_config(
