@@ -106,12 +106,12 @@ def display_stock_features(stock_name):
 
 def main():
     st.set_page_config(
-        page_title="Stock Prediction Dashboard",
+        page_title="Bullseye: Stock Prediction Dashboard",
         page_icon="📈",
         layout="wide"
     )
     
-    st.title("📈 Stock Price Prediction Dashboard")
+    st.title("📈 Bullseye: Stock Price Prediction Dashboard")
     
     # Sidebar for stock selection
     with st.sidebar:
