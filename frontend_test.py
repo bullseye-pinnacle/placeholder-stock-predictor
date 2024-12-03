@@ -250,6 +250,144 @@ def display_lstm_predictions(df, stock_name, chart_type):
     
     return predictions
 
+def display_technical_analysis(df, stock_name):
+    """Display technical analysis dashboard"""
+    st.subheader("📊 Technical Analysis Dashboard")
+    
+    # Display technical indicators with explanations
+    st.markdown("""
+    ### Key Technical Indicators
+    Monitor these indicators to understand market momentum, trends, and volatility:
+    """)
+    
+    # Technical Indicators in columns
+    tech_indicators = {
+        "RSI (14)": {
+            "value": df['RSI'].iloc[-1] if 'RSI' in df else None,
+            "desc": "Relative Strength Index - Measures momentum. Values > 70 suggest overbought, < 30 oversold."
+        },
+        "20-Day MA": {
+            "value": df['MA20'].iloc[-1] if 'MA20' in df else None,
+            "desc": "20-Day Moving Average - Short-term trend indicator."
+        },
+        "50-Day MA": {
+            "value": df['MA50'].iloc[-1] if 'MA50' in df else None,
+            "desc": "50-Day Moving Average - Medium-term trend indicator."
+        },
+        "Volatility": {
+            "value": df['Volatility'].iloc[-1] if 'Volatility' in df else None,
+            "desc": "20-Day Rolling Volatility - Measures price fluctuation intensity."
+        }
+    }
+    
+    # Display indicators with metrics and descriptions
+    for name, info in tech_indicators.items():
+        st.write(f"**{name}**")
+        if info["value"] is not None:
+            st.metric(name, f"{info['value']:.2f}")
+        else:
+            st.metric(name, "N/A")
+        st.caption(info["desc"])
+        st.write("---")
+    
+    # Plot technical indicators
+    fig = go.Figure()
+    
+    # Price and Moving Averages
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df['Close'],
+        name='Close Price',
+        line=dict(color='blue')
+    ))
+    
+    if 'MA20' in df:
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['MA20'],
+            name='20-Day MA',
+            line=dict(color='orange', dash='dash')
+        ))
+    
+    if 'MA50' in df:
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['MA50'],
+            name='50-Day MA',
+            line=dict(color='green', dash='dash')
+        ))
+    
+    # Update layout
+    fig.update_layout(
+        title="Price and Moving Averages",
+        yaxis_title='Price (₹)',
+        xaxis_title='Date',
+        height=400,
+        showlegend=True
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # RSI Plot
+    if 'RSI' in df:
+        fig_rsi = go.Figure()
+        fig_rsi.add_trace(go.Scatter(
+            x=df.index,
+            y=df['RSI'],
+            name='RSI',
+            line=dict(color='purple')
+        ))
+        
+        # Add overbought/oversold lines
+        fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
+        fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+        
+        fig_rsi.update_layout(
+            title="Relative Strength Index (RSI)",
+            yaxis_title='RSI',
+            xaxis_title='Date',
+            height=300,
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig_rsi, use_container_width=True)
+
+def display_stock_features(stock_name, chart_type):
+    """Display all features and analysis for the selected stock."""
+    st.header(f"Analysis Dashboard: {stock_name}")
+    
+    # Load and display historical data
+    with st.spinner('Loading historical data...'):
+        df = load_stock_data(stock_name)
+        if df is not None and not df.empty:
+            # Display current price and daily change
+            current_price = df['Close'].iloc[-1]
+            price_change = ((current_price - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(
+                    "Current Price",
+                    f"₹{current_price:.2f}",
+                    f"{price_change:+.2f}%"
+                )
+            with col2:
+                st.metric(
+                    "Trading Volume",
+                    f"{df['Volume'].iloc[-1]:,.0f}"
+                )
+            
+            # Create tabs for different features
+            tab1, tab2 = st.tabs(["📈 LSTM Predictions", "📊 Technical Analysis"])
+            
+            with tab1:
+                predictions = display_lstm_predictions(df, stock_name, chart_type)
+            
+            with tab2:
+                display_technical_analysis(df, stock_name)
+        else:
+            st.error(f"Failed to load data for {stock_name}")
+
 def display_placeholder_feature(df, stock_name):
     """Placeholder for a new feature"""
     st.subheader("🚧 Portfolio Optimization (Coming Soon)")
@@ -289,58 +427,6 @@ def display_placeholder_feature(df, stock_name):
         height=400
     )
     st.plotly_chart(fig, use_container_width=True)
-
-def display_stock_features(stock_name, chart_type):
-    """Display all features and analysis for the selected stock."""
-    st.header(f"Analysis Dashboard: {stock_name}")
-    
-    # Load and display historical data
-    with st.spinner('Loading historical data...'):
-        df = load_stock_data(stock_name)
-        if df is not None and not df.empty:
-            # Display current price and daily change
-            current_price = df['Close'].iloc[-1]
-            price_change = ((current_price - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(
-                    "Current Price",
-                    f"₹{current_price:.2f}",
-                    f"{price_change:+.2f}%"
-                )
-            with col2:
-                st.metric(
-                    "Trading Volume",
-                    f"{df['Volume'].iloc[-1]:,.0f}"
-                )
-            
-            # Create tabs for different features
-            tab1, tab2 = st.tabs(["📈 LSTM Predictions", "💼 Portfolio Analysis"])
-            
-            with tab1:
-                predictions = display_lstm_predictions(df, stock_name, chart_type)
-            
-            with tab2:
-                display_placeholder_feature(df, stock_name)
-            
-            # Technical Indicators (shown below tabs)
-            st.subheader("Technical Indicators")
-            tech_indicators = {
-                "RSI (14)": df['RSI'].iloc[-1] if 'RSI' in df else None,
-                "20-Day MA": df['MA20'].iloc[-1] if 'MA20' in df else None,
-                "50-Day MA": df['MA50'].iloc[-1] if 'MA50' in df else None,
-                "Volatility": df['Volatility'].iloc[-1] if 'Volatility' in df else None
-            }
-            
-            cols = st.columns(len(tech_indicators))
-            for col, (name, value) in zip(cols, tech_indicators.items()):
-                if value is not None:
-                    col.metric(name, f"{value:.2f}")
-                else:
-                    col.metric(name, "N/A")
-        else:
-            st.error(f"Failed to load data for {stock_name}")
 
 def main():
     st.set_page_config(
