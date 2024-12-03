@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
+from PIL import ImageColor
 
 # List of available stocks (these are the ones we have models for)
 AVAILABLE_STOCKS = [
@@ -213,6 +214,82 @@ def plot_predictions(df, stock_name, predictions_dict, chart_type="Candlestick")
     
     return fig
 
+def calculate_monthly_trends(predictions_dict):
+    """Convert daily predictions to monthly trends"""
+    monthly_trends = {}
+    
+    for period, daily_preds in predictions_dict.items():
+        # Convert predictions to DataFrame with dates
+        last_date = datetime.now()
+        dates = pd.date_range(
+            start=last_date,
+            periods=len(daily_preds),
+            freq='D'
+        )
+        df_preds = pd.DataFrame({
+            'date': dates,
+            'prediction': daily_preds
+        })
+        
+        # Resample to monthly frequency
+        monthly_df = df_preds.set_index('date').resample('M').agg({
+            'prediction': [
+                ('mean', 'mean'),
+                ('min', 'min'),
+                ('max', 'max'),
+                ('volatility', 'std')
+            ]
+        }).droplevel(0, axis=1)
+        
+        monthly_trends[period] = monthly_df
+    
+    return monthly_trends
+
+def plot_monthly_trends(monthly_trends, current_price):
+    """Create monthly trends visualization"""
+    fig = go.Figure()
+    
+    colors = {'30d': 'red', '60d': 'orange', '120d': 'green'}
+    
+    for period, df in monthly_trends.items():
+        # Plot mean prediction
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['mean'],
+            name=f'{period} Mean',
+            line=dict(color=colors[period])
+        ))
+        
+        # Add confidence interval
+        fig.add_trace(go.Scatter(
+            x=df.index.tolist() + df.index.tolist()[::-1],
+            y=df['max'].tolist() + df['min'].tolist()[::-1],
+            fill='tonexty',
+            fillcolor=f'rgba{tuple(list(ImageColor.getrgb(colors[period])) + [0.2])}',
+            line=dict(width=0),
+            showlegend=False,
+            name=f'{period} Range'
+        ))
+    
+    # Add current price reference line
+    fig.add_hline(
+        y=current_price,
+        line_dash="dash",
+        line_color="gray",
+        annotation_text="Current Price"
+    )
+    
+    fig.update_layout(
+        title="Monthly Price Trend Forecast",
+        yaxis_title='Price (₹)',
+        xaxis_title='Month',
+        height=400,
+        showlegend=True,
+        hovermode='x unified'
+    )
+    
+    return fig
+
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
     st.header(f"Analysis Dashboard: {stock_name}")
@@ -257,6 +334,25 @@ def display_stock_features(stock_name, chart_type):
                         f"₹{final_price:.2f}",
                         f"{change_pct:+.2f}%"
                     )
+                
+                # Add Monthly Trend Analysis
+                st.subheader("Monthly Trend Analysis")
+                monthly_trends = calculate_monthly_trends(predictions)
+                fig_monthly = plot_monthly_trends(monthly_trends, current_price)
+                st.plotly_chart(fig_monthly, use_container_width=True)
+                
+                # Display monthly statistics
+                st.write("Monthly Price Statistics")
+                for period, df in monthly_trends.items():
+                    with st.expander(f"{period} Monthly Statistics"):
+                        st.dataframe(
+                            df.style.format({
+                                'mean': '₹{:.2f}',
+                                'min': '₹{:.2f}',
+                                'max': '₹{:.2f}',
+                                'volatility': '₹{:.2f}'
+                            })
+                        )
                 
             except Exception as e:
                 st.error(f"Error generating predictions: {str(e)}")
