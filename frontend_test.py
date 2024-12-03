@@ -748,97 +748,6 @@ def display_technical_analysis(df, stock_name):
             else:
                 st.write("No recent crossovers detected")
 
-def calculate_monthly_trends(df):
-    """Calculate monthly trends from historical data"""
-    # Resample data to monthly frequency
-    monthly_data = df.resample('M').agg({
-        'Open': 'first',
-        'High': 'max',
-        'Low': 'min',
-        'Close': 'last',
-        'Volume': 'sum'
-    })
-    
-    # Calculate monthly statistics
-    monthly_stats = pd.DataFrame()
-    monthly_stats['Average'] = (monthly_data['High'] + monthly_data['Low'] + monthly_data['Close']) / 3
-    monthly_stats['Change'] = monthly_data['Close'].pct_change() * 100
-    monthly_stats['Range'] = (monthly_data['High'] - monthly_data['Low']) / monthly_data['Low'] * 100
-    monthly_stats['Volume_Change'] = monthly_data['Volume'].pct_change() * 100
-    
-    return monthly_data, monthly_stats
-
-def calculate_pivot_points(df):
-    """Calculate pivot points and support/resistance levels"""
-    pivot_data = pd.DataFrame()
-    
-    # Calculate classic pivot points
-    pivot_data['PP'] = (df['High'] + df['Low'] + df['Close']) / 3
-    pivot_data['R1'] = 2 * pivot_data['PP'] - df['Low']
-    pivot_data['S1'] = 2 * pivot_data['PP'] - df['High']
-    pivot_data['R2'] = pivot_data['PP'] + (df['High'] - df['Low'])
-    pivot_data['S2'] = pivot_data['PP'] - (df['High'] - df['Low'])
-    
-    return pivot_data
-
-def find_support_resistance_levels(df, window=20, price_threshold=0.02):
-    """Find support and resistance levels based on price action"""
-    levels = []
-    
-    # Convert to numpy array for faster computation
-    prices = df['Close'].values
-    
-    for i in range(window, len(prices) - window):
-        # Get the window of prices around current point
-        window_prices = prices[i-window:i+window]
-        current_price = prices[i]
-        
-        # Check if current price is a local minimum (support)
-        if current_price == min(window_prices):
-            levels.append({
-                'price': current_price,
-                'type': 'support',
-                'date': df.index[i]
-            })
-        
-        # Check if current price is a local maximum (resistance)
-        if current_price == max(window_prices):
-            levels.append({
-                'price': current_price,
-                'type': 'resistance',
-                'date': df.index[i]
-            })
-    
-    # Convert to DataFrame
-    levels_df = pd.DataFrame(levels)
-    
-    if not levels_df.empty:
-        # Group nearby levels
-        grouped_levels = []
-        current_price = df['Close'].iloc[-1]
-        
-        for level_type in ['support', 'resistance']:
-            type_levels = levels_df[levels_df['type'] == level_type]['price'].values
-            
-            if len(type_levels) > 0:
-                # Use clustering to group nearby price levels
-                from sklearn.cluster import DBSCAN
-                clusters = DBSCAN(eps=current_price * price_threshold, min_samples=1).fit(type_levels.reshape(-1, 1))
-                
-                # Calculate mean price for each cluster
-                unique_labels = set(clusters.labels_)
-                for label in unique_labels:
-                    cluster_prices = type_levels[clusters.labels_ == label]
-                    grouped_levels.append({
-                        'price': float(np.mean(cluster_prices)),
-                        'type': level_type,
-                        'strength': len(cluster_prices)  # Number of points in cluster indicates strength
-                    })
-        
-        return pd.DataFrame(grouped_levels)
-    
-    return pd.DataFrame(columns=['price', 'type', 'strength'])
-
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
     st.header(f"Analysis Dashboard: {stock_name}")
@@ -921,8 +830,12 @@ def display_placeholder_feature(df, stock_name):
 def calculate_trading_probabilities(df, predictions, window=30):
     """Calculate buy/sell/hold probabilities based on LSTM predictions"""
     
+    st.write("Debug - Received predictions type:", type(predictions))
+    st.write("Debug - Received predictions length:", len(predictions) if predictions is not None else "None")
+    
     # Check if predictions is valid
     if predictions is None or not isinstance(predictions, (list, np.ndarray)) or len(predictions) == 0:
+        st.warning("Invalid predictions received in calculate_trading_probabilities")
         # Return default probabilities if no predictions available
         return {
             'probabilities': {
@@ -942,14 +855,20 @@ def calculate_trading_probabilities(df, predictions, window=30):
         }
     
     # Convert predictions to numpy array if it's not already
-    predictions = np.array(predictions)
+    predictions = np.array(predictions).flatten()  # Ensure 1D array
     current_price = df['Close'].iloc[-1]
+    
+    st.write("Debug - Processed predictions shape:", predictions.shape)
+    st.write("Debug - Current price:", current_price)
     
     # Calculate price changes as percentage
     price_changes = np.zeros_like(predictions)
     for i in range(len(predictions)):
         price_changes[i] = (predictions[i] - current_price) / current_price * 100
     
+    st.write("Debug - Price changes:", price_changes[:5])
+    
+    # Rest of the function remains the same...
     # Calculate momentum from recent predictions
     momentum = np.mean(price_changes)
     momentum_std = np.std(price_changes)
