@@ -839,41 +839,241 @@ def display_technical_analysis(df, stock_name):
             else:
                 st.write("No recent crossovers detected")
 
+def calculate_trading_probabilities(df, predictions, window=30):
+    """Calculate buy/sell/hold probabilities based on LSTM predictions"""
+    
+    # Calculate price changes
+    price_changes = (predictions - df['Close'].iloc[-1]) / df['Close'].iloc[-1] * 100
+    
+    # Calculate momentum from recent predictions
+    momentum = np.mean(price_changes)
+    momentum_std = np.std(price_changes)
+    
+    # Calculate volatility
+    volatility = df['Close'].pct_change().std() * np.sqrt(window) * 100
+    
+    # Base probabilities on price movement and volatility
+    if momentum > 0:
+        buy_base = 60 + min(momentum * 5, 30)
+        sell_base = max(10, 40 - momentum * 5)
+    else:
+        buy_base = max(10, 60 + momentum * 5)
+        sell_base = min(90, 40 - momentum * 5)
+    
+    # Adjust for volatility
+    volatility_factor = min(volatility / 2, 20)  # Cap volatility impact at 20%
+    hold_base = volatility_factor
+    
+    # Normalize probabilities to sum to 100
+    total = buy_base + sell_base + hold_base
+    buy_prob = (buy_base / total) * 100
+    sell_prob = (sell_base / total) * 100
+    hold_prob = (hold_base / total) * 100
+    
+    # Calculate confidence scores
+    confidence = {
+        'overall': min(100, max(0, 100 - (momentum_std * 10))),
+        'trend_strength': min(100, max(0, abs(momentum) * 10)),
+        'volatility_risk': min(100, volatility * 2)
+    }
+    
+    return {
+        'probabilities': {
+            'buy': buy_prob,
+            'sell': sell_prob,
+            'hold': hold_prob
+        },
+        'confidence': confidence,
+        'metrics': {
+            'momentum': momentum,
+            'volatility': volatility
+        }
+    }
+
+def display_risk_assessment(df, stock_name, predictions):
+    """Display risk assessment and trading probabilities"""
+    st.header("🎯 Risk Assessment")
+    
+    # Calculate trading probabilities
+    analysis = calculate_trading_probabilities(df, predictions)
+    probs = analysis['probabilities']
+    conf = analysis['confidence']
+    metrics = analysis['metrics']
+    
+    # Display probability scores
+    st.subheader("Trading Action Probabilities")
+    
+    # Create three columns for probabilities
+    col1, col2, col3 = st.columns(3)
+    
+    # Helper function to determine probability color
+    def get_prob_color(prob):
+        if prob >= 60:
+            return "green"
+        elif prob >= 40:
+            return "orange"
+        else:
+            return "red"
+    
+    # Display probabilities with colors
+    with col1:
+        st.markdown(f"""
+        <div style='text-align: center; color: {get_prob_color(probs['buy'])}'>
+            <h3 style='margin-bottom: 0px'>Buy</h3>
+            <h2 style='margin-top: 0px'>{probs['buy']:.1f}%</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div style='text-align: center; color: {get_prob_color(probs['sell'])}'>
+            <h3 style='margin-bottom: 0px'>Sell</h3>
+            <h2 style='margin-top: 0px'>{probs['sell']:.1f}%</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div style='text-align: center; color: {get_prob_color(probs['hold'])}'>
+            <h3 style='margin-bottom: 0px'>Hold</h3>
+            <h2 style='margin-top: 0px'>{probs['hold']:.1f}%</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Display confidence metrics
+    st.subheader("Confidence Metrics")
+    
+    # Create confidence gauge charts
+    fig = go.Figure()
+    
+    # Add gauge charts for each confidence metric
+    gauge_colors = {
+        'overall': ['red', 'orange', 'green'],
+        'trend_strength': ['blue', 'purple', 'red'],
+        'volatility_risk': ['green', 'orange', 'red']
+    }
+    
+    gauge_titles = {
+        'overall': 'Overall Confidence',
+        'trend_strength': 'Trend Strength',
+        'volatility_risk': 'Volatility Risk'
+    }
+    
+    for i, (metric, value) in enumerate(conf.items()):
+        fig.add_trace(go.Indicator(
+            mode="gauge+number",
+            value=value,
+            domain={'row': 0, 'column': i},
+            title={'text': gauge_titles[metric]},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': gauge_colors[metric][1]},
+                'steps': [
+                    {'range': [0, 33], 'color': gauge_colors[metric][0]},
+                    {'range': [33, 66], 'color': gauge_colors[metric][1]},
+                    {'range': [66, 100], 'color': gauge_colors[metric][2]}
+                ]
+            }
+        ))
+    
+    # Update layout for gauge charts
+    fig.update_layout(
+        grid={'rows': 1, 'columns': 3},
+        height=250,
+        margin=dict(t=30, b=0)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Display analysis summary
+    st.subheader("Analysis Summary")
+    
+    # Determine market condition
+    if metrics['momentum'] > 1:
+        market_condition = "Bullish 📈"
+        market_color = "green"
+    elif metrics['momentum'] < -1:
+        market_condition = "Bearish 📉"
+        market_color = "red"
+    else:
+        market_condition = "Neutral ↔️"
+        market_color = "orange"
+    
+    # Create summary text
+    summary_text = f"""
+    <div style='padding: 20px; border-radius: 5px; background-color: #f0f2f6'>
+        <p><strong>Market Condition:</strong> <span style='color: {market_color}'>{market_condition}</span></p>
+        <p><strong>Momentum:</strong> {metrics['momentum']:.2f}% (30-day prediction trend)</p>
+        <p><strong>Volatility:</strong> {metrics['volatility']:.2f}% (30-day historical)</p>
+        <p><strong>Primary Signal:</strong> {max(probs.items(), key=lambda x: x[1])[0].title()} ({max(probs.values()):.1f}% probability)</p>
+    </div>
+    """
+    
+    st.markdown(summary_text, unsafe_allow_html=True)
+    
+    # Add risk factors explanation in expander
+    with st.expander("Understanding Risk Factors"):
+        st.markdown("""
+        #### How to Interpret the Scores
+        
+        1. **Trading Probabilities**
+           - Buy: Likelihood of positive returns in the short term
+           - Sell: Probability of price decline
+           - Hold: Suggestion to maintain current position due to uncertainty
+        
+        2. **Confidence Metrics**
+           - Overall Confidence: Reliability of the prediction model
+           - Trend Strength: Magnitude of the predicted price movement
+           - Volatility Risk: Level of price fluctuation risk
+        
+        3. **Market Conditions**
+           - Bullish: Strong upward trend (>1% momentum)
+           - Bearish: Strong downward trend (<-1% momentum)
+           - Neutral: Sideways movement (-1% to 1% momentum)
+        
+        #### Risk Factors Considered
+        - Historical price volatility
+        - Prediction model confidence
+        - Market momentum
+        - Technical indicators
+        - Price action patterns
+        """)
+
 def display_stock_features(stock_name, chart_type):
     """Display all features and analysis for the selected stock."""
     st.header(f"Analysis Dashboard: {stock_name}")
     
-    # Load and display historical data
-    with st.spinner('Loading historical data...'):
-        df = load_stock_data(stock_name)
-        if df is not None and not df.empty:
-            # Display current price and daily change
-            current_price = df['Close'].iloc[-1]
-            price_change = ((current_price - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(
-                    "Current Price",
-                    f"₹{current_price:.2f}",
-                    f"{price_change:+.2f}%"
-                )
-            with col2:
-                st.metric(
-                    "Trading Volume",
-                    f"{df['Volume'].iloc[-1]:,.0f}"
-                )
-            
-            # Create tabs for different features
-            tab1, tab2 = st.tabs(["📈 LSTM Predictions", "📊 Technical Analysis"])
-            
-            with tab1:
-                predictions = display_lstm_predictions(df, stock_name, chart_type)
-            
-            with tab2:
-                display_technical_analysis(df, stock_name)
-        else:
-            st.error(f"Failed to load data for {stock_name}")
+    # Load and preprocess data
+    df = load_stock_data(stock_name)
+    
+    if df is not None and not df.empty:
+        # Display current price and daily change
+        current_price = df['Close'].iloc[-1]
+        price_change = ((current_price - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(
+                "Current Price",
+                f"₹{current_price:.2f}",
+                f"{price_change:+.2f}%"
+            )
+        with col2:
+            st.metric(
+                "Trading Volume",
+                f"{df['Volume'].iloc[-1]:,.0f}"
+            )
+        
+        # Display LSTM predictions
+        predictions = display_lstm_predictions(df, stock_name, chart_type)
+        
+        # Display technical analysis
+        display_technical_analysis(df, stock_name)
+        
+        # Display risk assessment
+        display_risk_assessment(df, stock_name, predictions)
+    else:
+        st.error("Failed to load stock data. Please try again.")
 
 def display_placeholder_feature(df, stock_name):
     """Placeholder for a new feature"""
