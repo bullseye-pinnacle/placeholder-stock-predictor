@@ -921,8 +921,14 @@ def display_placeholder_feature(df, stock_name):
 def calculate_trading_probabilities(df, predictions, window=30):
     """Calculate buy/sell/hold probabilities based on LSTM predictions"""
     
-    # Calculate price changes
-    price_changes = (predictions - df['Close'].iloc[-1]) / df['Close'].iloc[-1] * 100
+    # Convert predictions to numpy array if it's not already
+    predictions = np.array(predictions)
+    current_price = df['Close'].iloc[-1]
+    
+    # Calculate price changes as percentage
+    price_changes = np.zeros_like(predictions)
+    for i in range(len(predictions)):
+        price_changes[i] = (predictions[i] - current_price) / current_price * 100
     
     # Calculate momentum from recent predictions
     momentum = np.mean(price_changes)
