@@ -14,7 +14,7 @@ st.set_option('client.showErrorDetails', False)
 
 # List of available stocks (these are the ones we have models for)
 AVAILABLE_STOCKS = [
-    "TATAMOTORS", "DRREDDY", "CIPLA", "HINDUNILVR", "TRENT",
+    "TATAMOTORS", "DRREDDY", "CIPLA", "HINDUNILVR",
     "BAJFINANCE", "BHARTIARTL", "HINDALCO", "HDFCBANK", "TCS",
     "TATASTEEL", "INFY", "ITC", "RELIANCE", "MARUTI"
 ]
