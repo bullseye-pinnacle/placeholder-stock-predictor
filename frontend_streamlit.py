@@ -16,7 +16,7 @@ st.set_option('client.showErrorDetails', False)
 AVAILABLE_STOCKS = [
     "TATAMOTORS", "DRREDDY", "CIPLA", "HINDUNILVR", "TRENT",
     "BAJFINANCE", "BHARTIARTL", "HINDALCO", "HDFCBANK", "TCS",
-    "TATASTEEL", "ICICIBANK", "INFY", "ITC", "RELIANCE", "MARUTI"
+    "TATASTEEL", "INFY", "ITC", "RELIANCE", "MARUTI"
 ]
 
 def load_stock_data(symbol, years=10):
