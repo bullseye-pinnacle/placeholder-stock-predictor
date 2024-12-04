@@ -228,7 +228,7 @@ def display_lstm_predictions(df, stock_name, chart_type):
         
         # Generate predictions for different time horizons
         col1, col2, col3 = st.columns(3)
-        for days, col in zip([30, 60, 120], [col1, col2, col3]):
+        for days, col in zip([30, 60], [col1, col2]):
             pred = generate_predictions(model, last_sequence, scaler, days)
             predictions[f'{days}d'] = pred
             
