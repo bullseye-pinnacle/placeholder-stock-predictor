@@ -10,6 +10,8 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 
+st.set_option('client.showErrorDetails', False)
+
 # List of available stocks (these are the ones we have models for)
 AVAILABLE_STOCKS = [
     "TATAMOTORS", "DRREDDY", "CIPLA", "HINDUNILVR", "TRENT",
