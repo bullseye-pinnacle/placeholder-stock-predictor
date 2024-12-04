@@ -1,1 +1,1 @@
-# placeholder-stock-predictor
+# Bullseye: Stock Market Prediction and Analysis Tool
